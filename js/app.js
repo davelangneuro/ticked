@@ -117,7 +117,8 @@ function syncPill() {
 
 function tasksShell() {
   return `
-    <section class="hero"><div><h2 id="greet"></h2><p id="hero-date"></p></div><div class="done-badge t0" id="done-badge" role="status"><span class="db-icon" aria-hidden="true"></span><span class="db-text"><span class="db-num">0</span><span class="db-label">done today</span></span></div></section>
+    <div class="done-badge t0" id="done-badge" role="status"><span class="db-icon" aria-hidden="true"></span><span class="db-text"><span class="db-num">0</span><span class="db-label">done today</span></span></div>
+    <section class="hero"><div><h2 id="greet"></h2><p id="hero-date"></p></div></section>
     <form class="quickadd" id="quickadd" autocomplete="off">
       <div class="quickadd-row">
         <span class="plus">${I.plus.replace('<svg', '<svg width="20" height="20"')}</span>
@@ -958,6 +959,11 @@ document.addEventListener('pointermove', (e) => {
 });
 
 window.addEventListener('hashchange', () => { ui.route = currentRoute(); render(); });
+
+// shrink the pinned counter a little once the greeting has scrolled away
+$('.main').addEventListener('scroll', (e) => {
+  $('#done-badge')?.classList.toggle('stuck', e.target.scrollTop > 60);
+}, { passive: true });
 
 // ---------- in-app reminders (when this device has no server push) ----------
 

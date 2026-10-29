@@ -1,5 +1,5 @@
 // Service worker: offline support + push notifications.
-const CACHE = 'ticked-v3';
+const CACHE = 'ticked-v4';
 const SHELL = [
   './', 'index.html', 'css/app.css', 'config.js', 'manifest.webmanifest',
   'js/app.js', 'js/store.js', 'js/core.js', 'js/celebrate.js', 'js/stats.js',

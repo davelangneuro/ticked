@@ -191,11 +191,15 @@ h1, h2, h3 { margin: 0; letter-spacing: -0.01em; }
 .hero { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin: 6px 0 18px; }
 .hero h2 { font-size: 26px; font-weight: 750; letter-spacing: -0.025em; }
 .hero p { margin: 2px 0 0; color: var(--ink-3); font-weight: 500; }
+/* floats beside the greeting and stays pinned to the top while the list scrolls */
 .done-badge {
-  position: relative; display: flex; align-items: center; gap: 10px; flex: none; padding: 8px 16px 8px 11px;
+  float: right; position: sticky; top: calc(var(--safe-t) + 10px); z-index: 5; margin: 8px 0 0 12px;
+  display: flex; align-items: center; gap: 10px; flex: none; padding: 8px 16px 8px 11px;
+  transform-origin: top right; transition: background .5s, box-shadow .3s, color .5s, scale .25s;
   border-radius: 18px; background: var(--surface); box-shadow: var(--shadow-1); color: var(--ink);
-  transition: background .5s, box-shadow .5s, color .5s; overflow: visible;
+  overflow: visible;
 }
+.done-badge.stuck { scale: .88; box-shadow: var(--shadow-2); }
 .db-icon { font-size: 27px; line-height: 1; display: inline-block; transform-origin: 50% 70%; }
 .db-text { display: flex; flex-direction: column; line-height: 1.05; }
 .db-num { font-size: 25px; font-weight: 800; letter-spacing: -0.03em; font-variant-numeric: tabular-nums; display: inline-block; }
