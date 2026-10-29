@@ -117,7 +117,7 @@ function syncPill() {
 
 function tasksShell() {
   return `
-    <div class="done-badge t0" id="done-badge" role="status"><span class="db-icon" aria-hidden="true"></span><span class="db-text"><span class="db-num">0</span><span class="db-label">done today</span></span></div>
+    <div class="badge-dock"><div class="done-badge t0" id="done-badge" role="status"><span class="db-icon" aria-hidden="true"></span><span class="db-text"><span class="db-num">0</span><span class="db-label">done today</span></span></div></div>
     <section class="hero"><div><h2 id="greet"></h2><p id="hero-date"></p></div></section>
     <form class="quickadd" id="quickadd" autocomplete="off">
       <div class="quickadd-row">
