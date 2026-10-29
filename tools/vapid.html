@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>VAPID Key Generator</title>
+  <style>
+    :root { --bg: #f6f5f2; --card: #fff; --ink: #1d1c1a; --muted: #6b6963; --accent: #5b5bd6; }
+    @media (prefers-color-scheme: dark) { :root { --bg: #141413; --card: #1d1d1b; --ink: #f1efe9; --muted: #a09d96; --accent: #8b8ef0; } }
+    body { background: var(--bg); color: var(--ink); font: 15px/1.5 system-ui, sans-serif; margin: 0; padding: 32px 16px; }
+    main { max-width: 640px; margin: 0 auto; }
+    .card { background: var(--card); border-radius: 14px; padding: 16px; margin-top: 14px; }
+    label { font-weight: 600; font-size: 13px; color: var(--muted); }
+    textarea { width: 100%; box-sizing: border-box; font: 13px ui-monospace, monospace; padding: 10px; border-radius: 8px; border: 1px solid #8884; background: transparent; color: inherit; resize: none; }
+    button { background: var(--accent); color: #fff; border: 0; border-radius: 10px; padding: 10px 18px; font-weight: 600; cursor: pointer; }
+  </style>
+</head>
+<body>
+<main>
+  <h1>VAPID keys for Ticked</h1>
+  <p>These keys let your Supabase function send push notifications. They are generated in this browser and never sent anywhere.</p>
+  <button id="gen">Generate keys</button>
+  <div class="card"><label>Public key → config.js <code>vapidPublicKey</code> AND Supabase secret <code>VAPID_PUBLIC_KEY</code></label><textarea id="pub" rows="3" readonly></textarea></div>
+  <div class="card"><label>Private key → Supabase secret <code>VAPID_PRIVATE_KEY</code> only (keep it secret)</label><textarea id="priv" rows="2" readonly></textarea></div>
+  <div class="card"><label>A random cron secret → Supabase secret <code>CRON_SECRET</code> and cron.sql</label><textarea id="cron" rows="2" readonly></textarea></div>
+</main>
+<script>
+  const b64url = (buf) => btoa(String.fromCharCode(...new Uint8Array(buf))).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+  document.getElementById('gen').onclick = async () => {
+    const kp = await crypto.subtle.generateKey({ name: 'ECDSA', namedCurve: 'P-256' }, true, ['sign', 'verify']);
+    document.getElementById('pub').value = b64url(await crypto.subtle.exportKey('raw', kp.publicKey));
+    document.getElementById('priv').value = (await crypto.subtle.exportKey('jwk', kp.privateKey)).d;
+    document.getElementById('cron').value = b64url(crypto.getRandomValues(new Uint8Array(24)));
+  };
+</script>
+</body>
+</html>

@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Ticked</title>
+  <meta name="description" content="A calm, satisfying to-do list that syncs between your computers and phone.">
+  <meta name="theme-color" content="#f6f5f2" media="(prefers-color-scheme: light)">
+  <meta name="theme-color" content="#141413" media="(prefers-color-scheme: dark)">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <meta name="apple-mobile-web-app-title" content="Ticked">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" href="icons/icon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+  <link rel="stylesheet" href="css/app.css">
+</head>
+<body>
+  <div class="app">
+    <aside class="sidebar">
+      <div class="brand"><span class="brand-mark"></span>Ticked</div>
+      <nav class="side-nav" id="side-nav"></nav>
+      <div class="side-lists" id="side-lists"></div>
+      <div class="side-foot" id="side-foot"></div>
+    </aside>
+    <main class="main">
+      <header class="topbar" id="topbar"></header>
+      <div class="view" id="view"></div>
+    </main>
+    <nav class="tabbar" id="tabbar"></nav>
+    <button class="fab" id="fab" aria-label="Add task">
+      <svg viewBox="0 0 24 24" width="26" height="26"><path d="M12 5v14M5 12h14" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" fill="none"/></svg>
+    </button>
+  </div>
+  <div id="sheet-root"></div>
+  <div id="toast-root" class="toast-root" aria-live="polite"></div>
+  <div id="tooltip" class="tooltip" role="tooltip"></div>
+  <canvas id="confetti" class="confetti-canvas"></canvas>
+  <script type="module" src="js/app.js"></script>
+</body>
+</html>
