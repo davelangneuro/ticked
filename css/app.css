@@ -58,7 +58,7 @@
 }
 
 * { box-sizing: border-box; }
-html, body { margin: 0; height: 100%; }
+html, body { margin: 0; height: 100%; overflow: hidden; overscroll-behavior: none; }
 body {
   background: var(--bg);
   color: var(--ink);
@@ -80,9 +80,13 @@ h1, h2, h3 { margin: 0; letter-spacing: -0.01em; }
 .sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
 
 /* ---------- layout ---------- */
-.app { display: grid; grid-template-columns: 1fr; min-height: 100vh; }
+.app { display: grid; grid-template-columns: 1fr; height: 100vh; height: 100dvh; }
 .sidebar { display: none; }
-.main { min-width: 0; padding: calc(var(--safe-t) + 4px) 16px calc(96px + var(--safe-b)); }
+/* only the content area scrolls, so iOS's bounce never moves the tab bar */
+.main {
+  min-width: 0; height: 100vh; height: 100dvh; overflow-y: auto; overscroll-behavior-y: contain;
+  padding: calc(var(--safe-t) + 4px) 16px calc(96px + var(--safe-b));
+}
 .view { max-width: 760px; margin: 0 auto; }
 
 .topbar {

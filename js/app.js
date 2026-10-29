@@ -754,7 +754,7 @@ function render() {
   if (shellRoute !== ui.route) {
     $('#view').innerHTML = shell();
     shellRoute = ui.route;
-    window.scrollTo(0, 0);
+    $('.main').scrollTo(0, 0);
   }
   update();
 }
