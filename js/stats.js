@@ -24,6 +24,18 @@ const fmtKey = (k, opts) => {
 };
 
 /** Count completions per day key (and per priority). */
+// Levels for the "done today" counter; calendar and heatmap shading use the same steps.
+export const TIERS = [
+  { min: 0, icon: '🌱', label: 'Ready to go' },
+  { min: 1, icon: '✨', label: 'Warming up' },
+  { min: 3, icon: '⚡', label: 'On a roll' },
+  { min: 5, icon: '🔥', label: 'On fire' },
+  { min: 8, icon: '🚀', label: 'Unstoppable' },
+  { min: 12, icon: '🏆', label: 'Legendary' },
+];
+export const tierIndex = (n) => TIERS.reduce((best, t, i) => (n >= t.min ? i : best), 0);
+export const levelFor = (n) => Math.min(4, tierIndex(n));
+
 export function completionIndex(tasks, tz) {
   const byDay = new Map();
   for (const t of tasks) {
@@ -158,7 +170,7 @@ function hbars(rows) {
   return rows.map((r) => `<div class="hbar"><span class="lbl">${r.label}</span><div class="track"><div class="bar" style="width:${(r.v / max) * 100}%;background:${r.color}"></div></div><span class="val">${r.v}</span></div>`).join('');
 }
 
-function heatmap(byDay, today, goal) {
+function heatmap(byDay, today) {
   const weeks = 26;
   const mondayThisWeek = addDaysKey(today, -((weekdayOfKey(today) + 6) % 7));
   const start = addDaysKey(mondayThisWeek, -7 * (weeks - 1));
@@ -167,7 +179,7 @@ function heatmap(byDay, today, goal) {
     const k = addDaysKey(start, i);
     if (k > today) { cells += '<i class="blank"></i>'; continue; }
     const n = byDay.get(k)?.total || 0;
-    const lvl = n === 0 ? 0 : Math.min(4, Math.ceil((n / Math.max(1, goal)) * 4));
+    const lvl = levelFor(n);
     cells += `<i class="l${lvl}" data-tip="${esc(`<b>${fmtKey(k, { weekday: 'short', day: 'numeric', month: 'short' })}</b><br>${n} done`)}"></i>`;
   }
   return `<div class="heat">${cells}</div>`;
@@ -183,6 +195,8 @@ export function renderStats(tasks, settings, tz, range) {
   const inRange = done.filter((t) => { const k = dayKey(new Date(t.completedAt), tz); return k >= from && k <= today; });
   const prevCount = done.filter((t) => { const k = dayKey(new Date(t.completedAt), tz); return k >= prevFrom && k < from; }).length;
   const { current, best } = streaks(byDay, today);
+  let bestDay = 0;
+  for (let i = 0; i < range; i++) bestDay = Math.max(bestDay, byDay.get(addDaysKey(today, -i))?.total || 0);
 
   const withDue = inRange.filter((t) => t.dueDate);
   const onTime = withDue.filter((t) => new Date(t.completedAt) < overdueMoment(t, settings, tz)).length;
@@ -195,7 +209,7 @@ export function renderStats(tasks, settings, tz, range) {
     <div class="tiles">
       <div class="tile card"><div class="k">Completed</div><div class="v">${inRange.length}</div>
         <div class="s ${change > 0 ? 'up' : change < 0 ? 'down' : ''}">${change === null ? rangeLabel : `${change > 0 ? '▲' : change < 0 ? '▼' : ''} ${Math.abs(change)}% vs previous`}</div></div>
-      <div class="tile card"><div class="k">Per day</div><div class="v">${(inRange.length / range).toFixed(1)}</div><div class="s">goal ${settings.dailyGoal}</div></div>
+      <div class="tile card"><div class="k">Per day</div><div class="v">${(inRange.length / range).toFixed(1)}</div><div class="s">best day ${bestDay}</div></div>
       <div class="tile card"><div class="k">Streak</div><div class="v">${current}<span style="font-size:15px;font-weight:600"> day${current === 1 ? '' : 's'}</span></div><div class="s">best ${best}</div></div>
       <div class="tile card"><div class="k">On time</div><div class="v">${onTimePct === null ? '–' : onTimePct + '%'}</div><div class="s">${withDue.length ? `${onTime} of ${withDue.length} with a due date` : 'no due dates yet'}</div></div>
     </div>`;
@@ -242,8 +256,8 @@ export function renderStats(tasks, settings, tz, range) {
     </div>
     <div class="chart-card card">
       <h3>Last 6 months</h3>
-      <div class="sub">Each square is a day; stronger colour means more done (relative to your goal of ${settings.dailyGoal})</div>
-      ${heatmap(byDay, today, settings.dailyGoal)}
+      <div class="sub">Each square is a day; stronger colour means more done</div>
+      ${heatmap(byDay, today)}
       <div class="cal-legend">Less <i style="background:var(--heat-0)"></i><i style="background:var(--heat-1)"></i><i style="background:var(--heat-2)"></i><i style="background:var(--heat-3)"></i><i style="background:var(--heat-4)"></i> More</div>
     </div>`;
 }

@@ -58,7 +58,7 @@
 }
 
 * { box-sizing: border-box; }
-html, body { margin: 0; height: 100%; overflow: hidden; overscroll-behavior: none; }
+html, body { margin: 0; height: 100%; width: 100%; overflow: hidden; overscroll-behavior: none; }
 body {
   background: var(--bg);
   color: var(--ink);
@@ -84,7 +84,7 @@ h1, h2, h3 { margin: 0; letter-spacing: -0.01em; }
 .sidebar { display: none; }
 /* only the content area scrolls, so iOS's bounce never moves the tab bar */
 .main {
-  min-width: 0; height: 100vh; height: 100dvh; overflow-y: auto; overscroll-behavior-y: contain;
+  min-width: 0; height: 100vh; height: 100dvh; overflow-x: hidden; overflow-y: auto; overscroll-behavior: none;
   padding: calc(var(--safe-t) + 4px) 16px calc(96px + var(--safe-b));
 }
 .view { max-width: 760px; margin: 0 auto; }
@@ -191,12 +191,44 @@ h1, h2, h3 { margin: 0; letter-spacing: -0.01em; }
 .hero { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin: 6px 0 18px; }
 .hero h2 { font-size: 26px; font-weight: 750; letter-spacing: -0.025em; }
 .hero p { margin: 2px 0 0; color: var(--ink-3); font-weight: 500; }
-.ring { position: relative; width: 58px; height: 58px; flex: none; }
-.ring svg { transform: rotate(-90deg); }
-.ring .ring-bg { stroke: var(--surface-3); }
-.ring .ring-fg { stroke: var(--accent); transition: stroke-dashoffset .8s cubic-bezier(.2, .8, .2, 1); }
-.ring.goal .ring-fg { stroke: var(--ok); }
-.ring span { position: absolute; inset: 0; display: grid; place-items: center; font-size: 13px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.done-badge {
+  position: relative; display: flex; align-items: center; gap: 10px; flex: none; padding: 8px 16px 8px 11px;
+  border-radius: 18px; background: var(--surface); box-shadow: var(--shadow-1); color: var(--ink);
+  transition: background .5s, box-shadow .5s, color .5s; overflow: visible;
+}
+.db-icon { font-size: 27px; line-height: 1; display: inline-block; transform-origin: 50% 70%; }
+.db-text { display: flex; flex-direction: column; line-height: 1.05; }
+.db-num { font-size: 25px; font-weight: 800; letter-spacing: -0.03em; font-variant-numeric: tabular-nums; display: inline-block; }
+.db-label { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; opacity: .7; }
+.done-badge.t1 { background: var(--accent-soft); }
+.done-badge.t2 { background: linear-gradient(135deg, var(--accent-soft), color-mix(in srgb, var(--p3) 30%, var(--surface))); }
+.done-badge.t3 { background: linear-gradient(135deg, #ff8a3d, #e5484d); color: #fff; box-shadow: 0 6px 20px rgba(229, 72, 77, .35); }
+.done-badge.t4 { background: linear-gradient(135deg, #6e56f7, #d6409f); color: #fff; box-shadow: 0 6px 22px rgba(160, 70, 220, .4); }
+.done-badge.t5 { background: linear-gradient(135deg, #ffd25c, #f08c2e); color: #3a2200; box-shadow: 0 6px 24px rgba(240, 140, 46, .45); overflow: hidden; }
+.done-badge.t5::after {
+  content: ""; position: absolute; inset: 0; pointer-events: none;
+  background: linear-gradient(110deg, transparent 30%, rgba(255, 255, 255, .55) 50%, transparent 70%);
+  transform: translateX(-120%); animation: shimmer 3s ease-in-out infinite;
+}
+.done-badge.t3 .db-icon { animation: flicker 1.4s ease-in-out infinite; }
+.done-badge.t4 .db-icon { animation: hover 2.2s ease-in-out infinite; }
+.done-badge.t5 .db-icon { animation: wiggle 2.6s ease-in-out infinite; }
+.done-badge.pop { animation: badgePop .6s cubic-bezier(.3, 1.6, .5, 1); }
+.done-badge.pop .db-num { animation: numPop .6s cubic-bezier(.3, 1.6, .5, 1); }
+.db-icon.swap { animation: iconSwap .7s cubic-bezier(.3, 1.5, .5, 1) !important; }
+.plus-one {
+  position: absolute; right: 8px; top: -6px; font-weight: 800; font-size: 14px; color: var(--accent);
+  pointer-events: none; animation: floatUp 1s ease-out forwards;
+}
+.fly-dot { position: fixed; z-index: 61; width: 12px; height: 12px; border-radius: 50%; pointer-events: none; box-shadow: 0 0 14px 2px currentColor; }
+@keyframes badgePop { 0% { transform: scale(1); } 30% { transform: scale(1.12); } 60% { transform: scale(.96); } 100% { transform: scale(1); } }
+@keyframes numPop { 0% { transform: translateY(0); } 35% { transform: translateY(-5px) scale(1.25); } 100% { transform: none; } }
+@keyframes iconSwap { 0% { transform: scale(.2) rotate(-180deg); } 70% { transform: scale(1.35) rotate(15deg); } 100% { transform: none; } }
+@keyframes floatUp { 0% { opacity: 0; transform: translateY(6px); } 20% { opacity: 1; } 100% { opacity: 0; transform: translateY(-22px); } }
+@keyframes flicker { 0%, 100% { transform: scale(1) rotate(-3deg); } 50% { transform: scale(1.12) rotate(3deg); } }
+@keyframes hover { 0%, 100% { transform: translateY(0) rotate(-6deg); } 50% { transform: translateY(-4px) rotate(4deg); } }
+@keyframes wiggle { 0%, 80%, 100% { transform: rotate(0); } 85% { transform: rotate(-12deg) scale(1.1); } 90% { transform: rotate(10deg) scale(1.1); } 95% { transform: rotate(-6deg); } }
+@keyframes shimmer { 0%, 55% { transform: translateX(-120%); } 100% { transform: translateX(120%); } }
 
 .quickadd { position: relative; margin-bottom: 14px; }
 .quickadd-row {

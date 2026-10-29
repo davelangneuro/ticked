@@ -112,3 +112,24 @@ export function confetti() {
   }
   requestAnimationFrame(frame);
 }
+
+/** A glowing dot that arcs from one element to another, then calls `done`. */
+export function flyTo(fromEl, toEl, color, done) {
+  const target = toEl?.getBoundingClientRect();
+  if (reduced() || !target || target.bottom < 0 || target.top > innerHeight) { done(); return; }
+  const r = fromEl.getBoundingClientRect();
+  const x0 = r.left + r.width / 2 - 6, y0 = r.top + r.height / 2 - 6;
+  const dx = target.left + target.width / 2 - 6 - x0, dy = target.top + target.height / 2 - 6 - y0;
+  const dot = document.createElement('div');
+  dot.className = 'fly-dot';
+  dot.style.cssText = `left:${x0}px;top:${y0}px;background:${color};color:${color}`;
+  document.body.appendChild(dot);
+  let finished = false;
+  const finish = () => { if (finished) return; finished = true; dot.remove(); done(); };
+  dot.animate([
+    { transform: 'translate(0,0) scale(.6)' },
+    { transform: `translate(${dx * 0.3}px, ${dy * 0.5 - 70}px) scale(1.3)`, offset: 0.45 },
+    { transform: `translate(${dx}px, ${dy}px) scale(.5)` },
+  ], { duration: 620, easing: 'cubic-bezier(.45,0,.25,1)', fill: 'forwards' }).onfinish = finish;
+  setTimeout(finish, 800);
+}

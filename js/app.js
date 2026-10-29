@@ -4,8 +4,8 @@ import {
   dayKey, addDaysKey, diffDaysKey, weekdayOfKey, parseKey, keyFromYMD, isOverdue, listIsActive,
   describeRecurrence, computeNotifications,
 } from './core.js';
-import { burst, chime, confetti } from './celebrate.js';
-import { renderStats, completionIndex } from './stats.js';
+import { burst, chime, confetti, flyTo } from './celebrate.js';
+import { renderStats, completionIndex, TIERS, tierIndex, levelFor } from './stats.js';
 
 // ---------- helpers ----------
 
@@ -117,7 +117,7 @@ function syncPill() {
 
 function tasksShell() {
   return `
-    <section class="hero"><div><h2 id="greet"></h2><p id="hero-date"></p></div><div class="ring" id="hero-ring"></div></section>
+    <section class="hero"><div><h2 id="greet"></h2><p id="hero-date"></p></div><div class="done-badge t0" id="done-badge" role="status"><span class="db-icon" aria-hidden="true"></span><span class="db-text"><span class="db-num">0</span><span class="db-label">done today</span></span></div></section>
     <form class="quickadd" id="quickadd" autocomplete="off">
       <div class="quickadd-row">
         <span class="plus">${I.plus.replace('<svg', '<svg width="20" height="20"')}</span>
@@ -176,17 +176,7 @@ function updateTasks() {
   $('#hero-date').textContent = now.toLocaleDateString(undefined, { weekday: 'long', day: 'numeric', month: 'long' });
 
   const doneToday = store.allTasks().filter((t) => t.completedAt && dayKey(new Date(t.completedAt), tz()) === today);
-  const goal = Math.max(1, S().dailyGoal);
-  const pct = Math.min(1, doneToday.length / goal);
-  const C = 2 * Math.PI * 24;
-  const ring = $('#hero-ring');
-  ring.classList.toggle('goal', doneToday.length >= goal);
-  ring.title = `${doneToday.length} of ${goal} done today`;
-  if (!ring.firstChild) {
-    ring.innerHTML = `<svg width="58" height="58" viewBox="0 0 58 58"><circle class="ring-bg" cx="29" cy="29" r="24" fill="none" stroke-width="6"/><circle class="ring-fg" cx="29" cy="29" r="24" fill="none" stroke-width="6" stroke-linecap="round" stroke-dasharray="${C}" stroke-dashoffset="${C}"/></svg><span></span>`;
-  }
-  requestAnimationFrame(() => { $('.ring-fg', ring).style.strokeDashoffset = C * (1 - pct); });
-  $('span', ring).textContent = `${doneToday.length}/${goal}`;
+  setBadge(doneToday.length);
 
   // list chips
   const hasSchedules = S().lists.some((l) => l.active !== 'always');
@@ -319,6 +309,35 @@ function doneTodayCount() {
   return store.allTasks().filter((t) => t.completedAt && dayKey(new Date(t.completedAt), tz()) === today).length;
 }
 
+/** The "done today" counter; its icon and colours level up as the day goes on. */
+function setBadge(n, { animate = false } = {}) {
+  const el = $('#done-badge');
+  if (!el) return;
+  const ti = tierIndex(n), tier = TIERS[ti];
+  const prevTier = +(el.dataset.tier ?? ti);
+  const num = $('.db-num', el), icon = $('.db-icon', el);
+  if (num.textContent !== String(n)) num.textContent = n;
+  if (icon.textContent !== tier.icon) icon.textContent = tier.icon;
+  TIERS.forEach((_, i) => el.classList.toggle(`t${i}`, i === ti));
+  el.dataset.tier = ti;
+  el.title = `${n} done today · ${tier.label}`;
+  if (!animate) return;
+  el.classList.remove('pop');
+  void el.offsetWidth; // restart the animation
+  el.classList.add('pop');
+  if (ti > prevTier) {
+    icon.classList.remove('swap');
+    void icon.offsetWidth;
+    icon.classList.add('swap');
+  }
+  const plus = document.createElement('span');
+  plus.className = 'plus-one';
+  plus.textContent = '+1';
+  el.appendChild(plus);
+  setTimeout(() => plus.remove(), 1000);
+  burst(icon, ti > prevTier ? 'var(--p2)' : 'var(--accent)');
+}
+
 function onCheck(id, btn) {
   const t = store.getTask(id);
   if (!t) return;
@@ -333,20 +352,22 @@ function onCheck(id, btn) {
   ui.animating++;
   const color = getComputedStyle(row).getPropertyValue('--pc').trim();
   setTimeout(() => burst(btn, color), 140);
-  const before = doneTodayCount();
-  const goal = S().dailyGoal;
-  const hitGoal = before + 1 === goal;
-  if (S().sound) chime(hitGoal);
+  const after = doneTodayCount() + 1;
+  const tierUp = tierIndex(after) > tierIndex(after - 1);
+  if (S().sound) chime(tierUp && after >= 5);
   if (navigator.vibrate) navigator.vibrate(12);
+  // a little dot flies from the check circle into the counter, which then pops
+  setTimeout(() => flyTo(btn, $('#done-badge .db-num'), color, () => setBadge(after, { animate: true })), 180);
 
   setTimeout(() => row.classList.add('leaving'), 640);
   setTimeout(() => {
     ui.animating--;
     store.completeTask(id);
     const openLeft = visibleOpenTasks().filter((x) => x.dueDate && x.dueDate <= todayKey()).length;
-    if (hitGoal) {
-      if (S().confetti) confetti();
-      toast(`🎉 Daily goal reached — ${goal} done!`, 'Undo', () => store.uncompleteTask(id));
+    if (tierUp) {
+      const tier = TIERS[tierIndex(after)];
+      if (after >= 5 && S().confetti) confetti();
+      toast(`${tier.icon} ${tier.label}! ${after} done today`, 'Undo', () => store.uncompleteTask(id));
     } else if (openLeft === 0 && t.dueDate && t.dueDate <= todayKey()) {
       if (S().confetti) confetti();
       toast('🌿 Everything due today is done!', 'Undo', () => store.uncompleteTask(id));
@@ -536,7 +557,6 @@ function updateCalendar() {
   const byDay = completionIndex(tasks, tz());
   const dueByDay = new Map();
   for (const t of tasks) if (t.dueDate && !t.completedAt) dueByDay.set(t.dueDate, (dueByDay.get(t.dueDate) || 0) + 1);
-  const goal = Math.max(1, S().dailyGoal);
 
   const first = keyFromYMD(y, m, 1);
   let start = addDaysKey(first, -((weekdayOfKey(first) + 6) % 7));
@@ -546,7 +566,7 @@ function updateCalendar() {
     const p = parseKey(k);
     if (i >= 35 && p.m !== m) break;
     const n = byDay.get(k)?.total || 0;
-    const lvl = n === 0 ? 0 : Math.min(4, Math.ceil((n / goal) * 4));
+    const lvl = levelFor(n);
     const cls = ['cal-day', p.m !== m && 'out', lvl && `l${lvl}`, k === today && 'today', k === ui.calSel && 'sel'].filter(Boolean).join(' ');
     const label = `${fmtKey(k, { weekday: 'long', day: 'numeric', month: 'long' })}: ${n} done${dueByDay.get(k) ? `, ${dueByDay.get(k)} due` : ''}`;
     cells += `<button class="${cls}" data-action="cal-pick" data-key="${k}" aria-label="${esc(label)}">${p.d}${n ? `<span class="cnt">${n}✓</span>` : ''}${dueByDay.get(k) ? '<i class="due-dot"></i>' : ''}</button>`;
@@ -711,8 +731,7 @@ function updateSettingsView() {
     ${listsSection(s)}
     <div class="set-group"><h3>Look &amp; feel</h3><div class="set-card">
       <div class="set-row"><div class="lbl"><b>Theme</b></div><select data-set="theme" data-kind="str">${[['auto', 'Match system'], ['light', 'Light'], ['dark', 'Dark']].map(([v, l]) => `<option value="${v}" ${s.theme === v ? 'selected' : ''}>${l}</option>`).join('')}</select></div>
-      <div class="set-row"><div class="lbl"><b>Daily goal</b><small>Tasks per day; drives the ring, calendar shading and confetti</small></div><input type="number" min="1" max="50" value="${s.dailyGoal}" data-set="dailyGoal" data-kind="num"></div>
-      <div class="set-row"><div class="lbl"><b>Confetti</b><small>When you hit your goal or clear the day</small></div>${sw('confetti', s.confetti)}</div>
+      <div class="set-row"><div class="lbl"><b>Confetti</b><small>When you reach a new level or clear the day</small></div>${sw('confetti', s.confetti)}</div>
       <div class="set-row"><div class="lbl"><b>Sounds</b><small>A soft chime when you tick something off</small></div>${sw('sound', s.sound)}</div>
     </div></div>
     <div class="set-group"><h3>Your data</h3><div class="set-card">
@@ -856,7 +875,6 @@ document.addEventListener('change', async (e) => {
   if (el.dataset.set) {
     const kind = el.dataset.kind;
     let v = kind === 'bool' ? el.checked : kind === 'num' ? Number(el.value) : el.value;
-    if (el.dataset.set === 'dailyGoal') v = Math.max(1, Math.min(50, v || 1));
     if (kind === 'str' && el.type === 'time' && !v) return;
     if (el.dataset.set.endsWith('.name') && !String(v).trim()) return render();
     store.updateSettings((s) => setPath(s, el.dataset.set, v));
