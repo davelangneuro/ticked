@@ -77,6 +77,7 @@ const ui = {
 };
 
 const hasPush = () => ui.pushSub && !!store.getUser();
+const APP_VERSION = 6; // keep in step with CACHE in sw.js
 
 function currentRoute() {
   const r = location.hash.replace('#', '');
@@ -740,7 +741,7 @@ function updateSettingsView() {
         <button class="btn small" data-action="export">Export</button>
         <label class="btn small">Import<input type="file" accept="application/json,.json" id="import-file" hidden></label></div>
     </div></div>
-    <p class="muted" style="text-align:center;font-size:12.5px;margin:28px 0 8px">Ticked · time zone ${esc(tz())}</p>`;
+    <p class="muted" style="text-align:center;font-size:12.5px;margin:28px 0 8px">Ticked v${APP_VERSION} · time zone ${esc(tz())}</p>`;
 }
 
 function setPath(obj, path, val) {
@@ -960,10 +961,25 @@ document.addEventListener('pointermove', (e) => {
 
 window.addEventListener('hashchange', () => { ui.route = currentRoute(); render(); });
 
-// shrink the pinned counter a little once the greeting has scrolled away
-$('.main').addEventListener('scroll', (e) => {
-  $('#done-badge')?.classList.toggle('stuck', e.target.scrollTop > 60);
-}, { passive: true });
+// Pin the counter to the top once it would scroll out of view.
+function pinBadge() {
+  const dock = $('.badge-dock'), badge = $('#done-badge');
+  if (!dock || !badge) return;
+  const pinTop = parseFloat(getComputedStyle($('.main')).paddingTop) + 6; // includes the iPhone notch inset
+  const d = dock.getBoundingClientRect();
+  const pin = d.top + 8 < pinTop; // 8px = the counter's top margin in the strip
+  badge.classList.toggle('pinned', pin);
+  badge.style.top = pin ? `${pinTop}px` : '';
+  badge.style.right = pin ? `${innerWidth - d.right}px` : '';
+}
+let pinQueued = false;
+const queuePin = () => {
+  if (pinQueued) return;
+  pinQueued = true;
+  requestAnimationFrame(() => { pinQueued = false; pinBadge(); });
+};
+$('.main').addEventListener('scroll', queuePin, { passive: true });
+window.addEventListener('resize', queuePin);
 
 // ---------- in-app reminders (when this device has no server push) ----------
 

@@ -1,5 +1,5 @@
 // Service worker: offline support + push notifications.
-const CACHE = 'ticked-v5';
+const CACHE = 'ticked-v6'; // keep in step with APP_VERSION in js/app.js
 const SHELL = [
   './', 'index.html', 'css/app.css', 'config.js', 'manifest.webmanifest',
   'js/app.js', 'js/store.js', 'js/core.js', 'js/celebrate.js', 'js/stats.js',
@@ -22,11 +22,12 @@ self.addEventListener('fetch', (e) => {
   if (req.method !== 'GET') return;
   const url = new URL(req.url);
 
-  // App files: network first (always fresh), cache as offline fallback.
+  // App files: network first, cache as offline fallback. 'no-cache' makes the browser check
+  // with the server every time, so GitHub Pages' 10-minute caching can't serve stale files.
   if (url.origin === self.location.origin) {
     e.respondWith((async () => {
       try {
-        const res = await fetch(req);
+        const res = await fetch(req.url, { cache: 'no-cache', credentials: 'same-origin' });
         if (res.ok) (await caches.open(CACHE)).put(req, res.clone());
         return res;
       } catch {
