@@ -77,7 +77,7 @@ const ui = {
 };
 
 const hasPush = () => ui.pushSub && !!store.getUser();
-const APP_VERSION = 6; // keep in step with CACHE in sw.js
+const APP_VERSION = 7; // keep in step with CACHE in sw.js
 
 function currentRoute() {
   const r = location.hash.replace('#', '');
@@ -319,7 +319,10 @@ function setBadge(n, { animate = false } = {}) {
   const prevTier = +(el.dataset.tier ?? ti);
   const num = $('.db-num', el), icon = $('.db-icon', el);
   if (num.textContent !== String(n)) num.textContent = n;
-  if (icon.textContent !== tier.icon) icon.textContent = tier.icon;
+  if (icon.dataset.t !== String(ti)) {
+    icon.innerHTML = `<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">${tier.icon}</svg>`;
+    icon.dataset.t = ti;
+  }
   TIERS.forEach((_, i) => el.classList.toggle(`t${i}`, i === ti));
   el.dataset.tier = ti;
   el.title = `${n} done today · ${tier.label}`;
@@ -369,7 +372,7 @@ function onCheck(id, btn) {
     if (tierUp) {
       const tier = TIERS[tierIndex(after)];
       if (after >= 5 && S().confetti) confetti();
-      toast(`${tier.icon} ${tier.label}! ${after} done today`, 'Undo', () => store.uncompleteTask(id));
+      toast(`${tier.label}! ${after} done today`, 'Undo', () => store.uncompleteTask(id));
     } else if (openLeft === 0 && t.dueDate && t.dueDate <= todayKey()) {
       if (S().confetti) confetti();
       toast('🌿 Everything due today is done!', 'Undo', () => store.uncompleteTask(id));

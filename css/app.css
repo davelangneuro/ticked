@@ -202,7 +202,14 @@ h1, h2, h3 { margin: 0; letter-spacing: -0.01em; }
   overflow: visible;
 }
 .done-badge.pinned { position: fixed; margin: 0; z-index: 5; scale: .88; box-shadow: var(--shadow-2); }
-.db-icon { font-size: 27px; line-height: 1; display: inline-block; transform-origin: 50% 70%; }
+/* the level icon sits in a soft rounded tile tinted by its own colour */
+.db-icon {
+  width: 36px; height: 36px; border-radius: 11px; display: grid; place-items: center; flex: none;
+  color: var(--accent); background: color-mix(in srgb, currentColor 14%, transparent); transition: color .5s, background .5s;
+}
+.db-icon svg { display: block; transform-origin: 50% 60%; }
+.done-badge.t0 .db-icon { color: var(--ok); }
+.done-badge.t3 .db-icon, .done-badge.t4 .db-icon, .done-badge.t5 .db-icon { color: inherit; background: rgba(255, 255, 255, .22); }
 .db-text { display: flex; flex-direction: column; line-height: 1.05; }
 .db-num { font-size: 25px; font-weight: 800; letter-spacing: -0.03em; font-variant-numeric: tabular-nums; display: inline-block; }
 .db-label { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; opacity: .7; }
@@ -216,9 +223,9 @@ h1, h2, h3 { margin: 0; letter-spacing: -0.01em; }
   background: linear-gradient(110deg, transparent 30%, rgba(255, 255, 255, .55) 50%, transparent 70%);
   transform: translateX(-120%); animation: shimmer 3s ease-in-out infinite;
 }
-.done-badge.t3 .db-icon { animation: flicker 1.4s ease-in-out infinite; }
-.done-badge.t4 .db-icon { animation: hover 2.2s ease-in-out infinite; }
-.done-badge.t5 .db-icon { animation: wiggle 2.6s ease-in-out infinite; }
+.done-badge.t3 .db-icon svg { animation: flicker 1.4s ease-in-out infinite; }
+.done-badge.t4 .db-icon svg { animation: hover 2.2s ease-in-out infinite; }
+.done-badge.t5 .db-icon svg { animation: wiggle 2.6s ease-in-out infinite; }
 .done-badge.pop { animation: badgePop .6s cubic-bezier(.3, 1.6, .5, 1); }
 .done-badge.pop .db-num { animation: numPop .6s cubic-bezier(.3, 1.6, .5, 1); }
 .db-icon.swap { animation: iconSwap .7s cubic-bezier(.3, 1.5, .5, 1) !important; }

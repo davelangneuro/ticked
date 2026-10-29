@@ -26,12 +26,13 @@ const fmtKey = (k, opts) => {
 /** Count completions per day key (and per priority). */
 // Levels for the "done today" counter; calendar and heatmap shading use the same steps.
 export const TIERS = [
-  { min: 0, icon: '🌱', label: 'Ready to go' },
-  { min: 1, icon: '✨', label: 'Warming up' },
-  { min: 3, icon: '⚡', label: 'On a roll' },
-  { min: 5, icon: '🔥', label: 'On fire' },
-  { min: 8, icon: '🚀', label: 'Unstoppable' },
-  { min: 12, icon: '🏆', label: 'Legendary' },
+  // icon: line-art paths on a 24×24 grid (sprout, sparkle, bolt, flame, rocket, trophy)
+  { min: 0, label: 'Ready to go', icon: '<path d="M12 20v-7"/><path d="M12 13c0-3.6-2.4-6-6.5-6 0 3.6 2.4 6 6.5 6z"/><path d="M12 15c0-3.2 2.2-5.6 6-5.6 0 3.2-2.2 5.6-6 5.6z"/><path d="M8.5 20h7"/>' },
+  { min: 1, label: 'Warming up', icon: '<path d="M11 3.5l1.7 4.8 4.8 1.7-4.8 1.7L11 16.5l-1.7-4.8L4.5 10l4.8-1.7z"/><path d="M18 14.5l.8 2.2 2.2.8-2.2.8-.8 2.2-.8-2.2-2.2-.8 2.2-.8z"/>' },
+  { min: 3, label: 'On a roll', icon: '<path d="M13.5 2.5L5 13.5h6.5l-1 8 8.5-11H12.5z"/>' },
+  { min: 5, label: 'On fire', icon: '<path d="M12 21.5c-3.8 0-6.5-2.7-6.5-6.3 0-3.4 2.3-5.4 3.7-7.6.4 1.9 1.4 3 2.5 3.5-.2-3.5 1.4-6.3 3.6-8.6.4 3.3 2.2 5 3.5 7 .9 1.3 1.2 2.7 1.2 4.3 0 4.6-3.2 7.7-8 7.7z"/><path d="M12 21.5c-1.6 0-2.7-1.1-2.7-2.7 0-1.8 1.4-2.9 2.4-4.4 1 1.5 3 2.5 3 4.5 0 1.5-1.1 2.6-2.7 2.6z"/>' },
+  { min: 8, label: 'Unstoppable', icon: '<path d="M12 15.5l-3.5-3.5c1.9-5.2 5.6-8.6 12-9.5-.9 6.4-4.3 10.1-9.5 12z"/><path d="M8.5 12H4.5l2.6-3.2c.6-.7 1.4-1 2.3-1h2.2"/><path d="M12 15.5v4l3.2-2.6c.7-.6 1-1.4 1-2.3v-2.2"/><path d="M6.8 16.7c-1.6.6-2.3 2.3-2.3 3.8 1.5 0 3.2-.7 3.8-2.3"/><circle cx="15.2" cy="8.8" r="1.4"/>' },
+  { min: 12, label: 'Legendary', icon: '<path d="M8 21h8M12 16.5V21"/><path d="M7 3.5h10V9a5 5 0 0 1-10 0z"/><path d="M7 5.5H4.8a2.3 2.3 0 0 0 0 4.6H7.4M17 5.5h2.2a2.3 2.3 0 0 1 0 4.6h-2.6"/>' },
 ];
 export const tierIndex = (n) => TIERS.reduce((best, t, i) => (n >= t.min ? i : best), 0);
 export const levelFor = (n) => Math.min(4, tierIndex(n));
