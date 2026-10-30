@@ -78,6 +78,8 @@ const ui = {
   groupBy: prefs.groupBy === 'project' ? 'project' : 'date',
   collapsed: new Set(prefs.collapsed || []), // folded project groups
   showDoneProjects: false,
+  qa: {}, // quick-add picks (priority, dueDate, list, project…)
+  qaOpen: false,
   showDone: false,
   calMonth: null, // {y, m}
   calSel: null,
@@ -89,7 +91,7 @@ const ui = {
 };
 
 const hasPush = () => ui.pushSub && !!store.getUser();
-const APP_VERSION = 10; // keep in step with CACHE in sw.js
+const APP_VERSION = 11; // keep in step with CACHE in sw.js
 
 function currentRoute() {
   const r = location.hash.replace('#', '');
@@ -144,9 +146,63 @@ function quickAddForm(placeholder) {
         <input id="qa-input" placeholder="${esc(placeholder)}" aria-label="Add a task" enterkeyhint="done">
         <button class="btn primary small" type="submit">Add</button>
       </div>
-      <div class="qa-preview" id="qa-preview"></div>
-      <div class="qa-help">Shortcuts: <b>!1</b>–<b>!4</b> priority · <b>#work</b> list · <b>+project</b> · <b>today</b>, <b>tomorrow</b>, <b>fri</b> · <b>3pm</b> · <b>every week</b></div>
+      <div class="qa-options" id="qa-options" hidden></div>
     </form>`;
+}
+
+// ---------- quick-add options ----------
+// Picks made in the panel live in ui.qa; shortcuts typed in the text (!1, #work, +thesis, fri 3pm)
+// take precedence, and the panel always shows the combined result.
+
+function qaEffective() {
+  const p = parseQuick($('#qa-input')?.value || '');
+  const typed = Object.fromEntries(['priority', 'list', 'project', 'dueDate', 'dueTime', 'recurrence']
+    .filter((k) => p[k] != null).map((k) => [k, p[k]]));
+  const e = { priority: 3, list: null, project: projectById(ui.project)?.id || null, dueDate: null, dueTime: null, recurrence: null, ...ui.qa, ...typed };
+  if (!e.dueDate) e.dueTime = null;
+  if (!e.list) e.list = projectById(e.project)?.list || defaultListForNew();
+  return { ...e, title: p.title };
+}
+
+function renderQaOptions() {
+  const box = $('#qa-options');
+  if (!box) return;
+  box.hidden = !ui.qaOpen;
+  if (!ui.qaOpen) return;
+  const e = qaEffective();
+  const today = todayKey(), tomorrow = addDaysKey(today, 1);
+  const pill = (attrs, on, color, label) => `<button type="button" class="qa-pill ${on ? 'on' : ''}" ${attrs} aria-pressed="${on}" style="--pc:${color}"><i></i>${label}</button>`;
+  const open = projects().filter((p) => !p.done || p.id === e.project);
+  box.innerHTML = `
+    <div class="qa-row"><span class="qa-lbl">Priority</span><div class="qa-opts">
+      ${[1, 2, 3, 4].map((p) => pill(`data-qa="priority" data-v="${p}"`, e.priority === p, `var(--p${p})`, esc(prioName(p)))).join('')}
+    </div></div>
+    <div class="qa-row"><span class="qa-lbl">Due</span><div class="qa-opts">
+      ${pill(`data-qa="dueDate" data-v="${today}"`, e.dueDate === today, 'var(--accent)', 'Today')}
+      ${pill(`data-qa="dueDate" data-v="${tomorrow}"`, e.dueDate === tomorrow, 'var(--accent)', 'Tomorrow')}
+      <input type="date" data-qa-input="dueDate" value="${e.dueDate || ''}" aria-label="Due date">
+      <input type="time" data-qa-input="dueTime" value="${e.dueTime || ''}" aria-label="Due time" ${e.dueDate ? '' : 'disabled'}>
+      ${e.dueDate ? `<button type="button" class="icon-btn small" data-qa="dueDate" data-v="" aria-label="No due date">${I.x}</button>` : ''}
+    </div></div>
+    <div class="qa-row"><span class="qa-lbl">List</span><div class="qa-opts">
+      ${S().lists.map((l) => pill(`data-qa="list" data-v="${esc(l.id)}"`, e.list === l.id, esc(l.color), esc(l.name))).join('')}
+    </div></div>
+    ${open.length ? `<div class="qa-row"><span class="qa-lbl">Project</span><div class="qa-opts">
+      ${pill('data-qa="project" data-v=""', !e.project, 'var(--ink-3)', 'None')}
+      ${open.map((p) => pill(`data-qa="project" data-v="${esc(p.id)}"`, e.project === p.id, esc(p.color), esc(p.name))).join('')}
+    </div></div>` : ''}
+    <div class="qa-row qa-foot">
+      <button type="button" class="qa-more" data-qa="more">More options…</button>
+      <span class="qa-hint">Shortcuts: !1 · #work · +project · fri 3pm${e.recurrence ? ` · repeats ${esc(describeRecurrence(e.recurrence).toLowerCase())}` : ''}</span>
+    </div>`;
+}
+
+function resetQuickAdd({ close = false } = {}) {
+  ui.qa = {};
+  const input = $('#qa-input');
+  if (input) input.value = '';
+  if (close) ui.qaOpen = false;
+  renderQaOptions();
 }
 
 function tasksShell() {
@@ -297,6 +353,7 @@ function updateTasks() {
   const selected = projectById(ui.project);
   $('#project-head').innerHTML = selected ? projectHead(selected) : '';
   $('#qa-input').placeholder = selected ? `Add a task to ${selected.name}…` : 'Add a task…';
+  renderQaOptions();
 
   const tasks = visibleOpenTasks();
   // Urgent & High sit in their own section above everything, in both layouts
@@ -358,7 +415,7 @@ const WEEKDAYS = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'];
 
 function parseQuick(text) {
   let s = ` ${text} `;
-  const out = { tags: [] };
+  const out = {};
   const take = (re, fn) => {
     const m = s.match(re);
     if (m) { if (fn(m) !== false) s = s.replace(m[0], ' '); }
@@ -415,11 +472,6 @@ function parseQuick(text) {
   if (out.recurrence && !out.dueDate) out.dueDate = today;
   out.title = s.replace(/\s+/g, ' ').trim();
 
-  if (out.priority) out.tags.push(`● ${prioName(out.priority)}`);
-  if (out.list) out.tags.push(`${listById(out.list).icon} ${listById(out.list).name}`);
-  if (out.project) out.tags.push(`▸ ${projectById(out.project).name}`);
-  if (out.dueDate) out.tags.push(`📅 ${dueLabel({ dueDate: out.dueDate, dueTime: out.dueTime }).txt}`);
-  if (out.recurrence) out.tags.push(`↻ ${describeRecurrence(out.recurrence)}`);
   return out;
 }
 
@@ -1214,17 +1266,12 @@ document.addEventListener('submit', async (e) => {
   e.preventDefault();
   const form = e.target;
   if (form.id === 'quickadd') {
-    const input = $('#qa-input');
-    const p = parseQuick(input.value);
-    if (!p.title) return;
-    // on a project page, new tasks belong to that project unless +another is typed
-    const proj = projectById(p.project) || projectById(ui.project);
-    store.createTask({
-      title: p.title, priority: p.priority || 3, list: p.list || proj?.list || defaultListForNew(),
-      dueDate: p.dueDate || null, dueTime: p.dueTime || null, recurrence: p.recurrence || null, project: proj?.id || null,
-    });
-    input.value = '';
-    $('#qa-preview').innerHTML = '';
+    const e2 = qaEffective();
+    if (!e2.title) { $('#qa-input').focus(); return; }
+    const { title, priority, list, project, dueDate, dueTime, recurrence } = e2;
+    store.createTask({ title, priority, list, project, dueDate, dueTime, recurrence });
+    resetQuickAdd(); // stays open for the next one
+    $('#qa-input').focus();
   } else if (form.id === 'auth-form') {
     const mode = e.submitter?.dataset.mode || 'in';
     const email = form.email.value.trim(), password = form.password.value;
@@ -1240,10 +1287,7 @@ document.addEventListener('submit', async (e) => {
 });
 
 document.addEventListener('input', (e) => {
-  if (e.target.id === 'qa-input') {
-    const v = e.target.value;
-    $('#qa-preview').innerHTML = v.trim() ? parseQuick(v).tags.map((t) => `<span class="qa-tag">${esc(t)}</span>`).join('') : '';
-  }
+  if (e.target.id === 'qa-input') { ui.qaOpen = true; renderQaOptions(); }
 });
 
 document.addEventListener('keydown', (e) => {
@@ -1253,6 +1297,46 @@ document.addEventListener('keydown', (e) => {
     e.preventDefault();
     $('#qa-input')?.focus();
   }
+});
+
+// quick-add panel: open on focus, picks, and closing when you tap elsewhere with nothing entered
+document.addEventListener('focusin', (e) => {
+  if (e.target.id === 'qa-input' && !ui.qaOpen) { ui.qaOpen = true; renderQaOptions(); }
+});
+document.addEventListener('pointerdown', (e) => {
+  if (e.target.closest('#quickadd .quickadd-row') && !ui.qaOpen) { ui.qaOpen = true; renderQaOptions(); return; }
+  if (!ui.qaOpen || e.target.closest('#quickadd') || e.target.closest('.sheet-backdrop')) return;
+  if (!$('#qa-input')?.value.trim() && !Object.keys(ui.qa).length) { ui.qaOpen = false; renderQaOptions(); }
+});
+document.addEventListener('click', (e) => {
+  const b = e.target.closest('[data-qa]');
+  if (!b) return;
+  const k = b.dataset.qa, v = b.dataset.v;
+  if (k === 'more') {
+    const { title, priority, list, project, dueDate, dueTime, recurrence } = qaEffective();
+    resetQuickAdd({ close: true });
+    openEditor(null, { title, priority, list, project, dueDate, dueTime, recurrence });
+    return;
+  }
+  if (k === 'priority') ui.qa.priority = +v;
+  else if (k === 'dueDate') { ui.qa.dueDate = v || null; if (!v) ui.qa.dueTime = null; }
+  else if (k === 'list') ui.qa.list = v;
+  else if (k === 'project') {
+    ui.qa.project = v || null;
+    const p = projectById(v);
+    if (p?.list && !('list' in ui.qa)) ui.qa.list = p.list;
+  }
+  renderQaOptions();
+});
+document.addEventListener('change', (e) => {
+  const k = e.target.dataset?.qaInput;
+  if (!k) return;
+  ui.qa[k] = e.target.value || null;
+  if (k === 'dueDate' && !e.target.value) ui.qa.dueTime = null;
+  renderQaOptions();
+});
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape' && e.target.id === 'qa-input') { resetQuickAdd({ close: true }); e.target.blur(); }
 });
 
 $('#fab').addEventListener('click', () => {
