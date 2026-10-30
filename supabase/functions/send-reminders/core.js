@@ -26,6 +26,9 @@ export const DEFAULT_SETTINGS = {
   },
   digest: { enabled: true, time: '08:00', days: [1, 2, 3, 4, 5, 6, 0] },
   quiet: { enabled: true, start: '22:00', end: '07:00', weekends: false },
+  // tasks become Urgent once their deadline is within `days` days (1 = due tomorrow or sooner)
+  escalate: { enabled: true, days: 1, notify: true },
+  pinPriority: true, // keep Urgent & High above everything else in the task list
 };
 
 const isObj = (v) => v && typeof v === 'object' && !Array.isArray(v);
@@ -239,14 +242,37 @@ export function computeNotifications(tasks, rawSettings, now, sent) {
   const nowMs = now.getTime();
 
   const open = tasks.filter((t) => !t.completedAt && !t.deleted);
+  const todayK = dayKey(now, tz);
+  const esc = settings.escalate;
 
   for (const t of open) {
     if (!t.dueDate) continue;
+    const list = lists[t.list];
+    if (list && list.notifyOnlyActive && !listIsActive(list, settings, now, tz)) continue;
+
+    // "Now urgent": the deadline came close enough to escalate (never during quiet hours).
+    const daysLeft = diffDaysKey(t.dueDate, todayK);
+    const original = t.escalated ? t.escalatedFrom : t.priority;
+    const escKey = `esc:${t.id}@${t.dueDate}`;
+    if (esc.enabled && esc.notify && original > 1 && daysLeft >= 0 && daysLeft <= esc.days && !quiet && !sent.has(escKey)) {
+      logKeys.push(escKey);
+      // a task you just created already due soon doesn't need announcing
+      if (nowMs - Date.parse(t.createdAt || 0) > 10 * 60000) {
+        const when = daysLeft < 0 ? 'Overdue' : daysLeft === 0 ? 'Due today' : daysLeft === 1 ? 'Due tomorrow' : `Due in ${daysLeft} days`;
+        const ln = list ? `${list.icon || ''} ${list.name}`.trim() : '';
+        items.push({ key: escKey, taskId: t.id, tag: `esc-${t.id}`, title: `${DOTS[1]} Now urgent · ${when}`, body: [t.title, ln].filter(Boolean).join('\n') });
+        // this counts as the "before" reminders that are already due, so they don't double up
+        const occ = `${t.id}@${t.dueDate}T${t.dueTime || ''}`;
+        const due = dueMoment(t, settings, tz).getTime();
+        const offsets = new Set([...(settings.priorities[t.priority]?.notify.before || []), ...settings.priorities[1].notify.before]);
+        for (const o of offsets) if (due - o * 60000 <= nowMs) logKeys.push(`b${o}:${occ}`);
+        continue;
+      }
+    }
+
     const pr = settings.priorities[t.priority] || settings.priorities[3];
     const cfg = pr.notify;
     if (!cfg.enabled) continue;
-    const list = lists[t.list];
-    if (list && list.notifyOnlyActive && !listIsActive(list, settings, now, tz)) continue;
     if (quiet && !cfg.breakQuiet) continue;
 
     const occ = `${t.id}@${t.dueDate}T${t.dueTime || ''}`;

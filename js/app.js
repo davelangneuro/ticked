@@ -89,7 +89,7 @@ const ui = {
 };
 
 const hasPush = () => ui.pushSub && !!store.getUser();
-const APP_VERSION = 9; // keep in step with CACHE in sw.js
+const APP_VERSION = 10; // keep in step with CACHE in sw.js
 
 function currentRoute() {
   const r = location.hash.replace('#', '');
@@ -236,10 +236,14 @@ function projectHead(p) {
 }
 
 /** "By project" layout: one foldable group per project, then tasks without one. */
-function projectGroupsHtml(tasks) {
+/** 0 = overdue, 1 = has a date, 2 = no date. */
+function dueRank(t, now) {
+  return isOverdue(t, now, S(), tz()) ? 0 : t.dueDate ? 1 : 2;
+}
+
+function projectGroupsHtml(tasks, pinned = []) {
   const now = new Date();
-  const rank = (t) => (isOverdue(t, now, S(), tz()) ? 0 : t.dueDate ? 1 : 2);
-  const order = (a, b) => rank(a) - rank(b) || (a.dueDate || '').localeCompare(b.dueDate || '') || sortByPrio(a, b);
+  const order = (a, b) => dueRank(a, now) - dueRank(b, now) || (a.dueDate || '').localeCompare(b.dueDate || '') || sortByPrio(a, b);
   const showEmpty = ui.list === 'all' && ui.project === 'all';
   const groups = projects()
     .filter((p) => (ui.project === 'all' || ui.project === p.id) && (!p.done || ui.project === p.id))
@@ -253,7 +257,9 @@ function projectGroupsHtml(tasks) {
     const s = p && projectStats(p);
     const body = folded ? '' : items.length
       ? `<div class="task-list">${items.sort(order).map((t) => taskRow(t, { hideProject: true })).join('')}</div>`
-      : `<div class="group-empty">No open tasks · <button data-action="assign-existing" data-project="${esc(id)}">Add existing</button></div>`;
+      : pinned.some((t) => t.project === id)
+        ? `<div class="group-empty">Its urgent &amp; high tasks are pinned at the top</div>`
+        : `<div class="group-empty">No open tasks · <button data-action="assign-existing" data-project="${esc(id)}">Add existing</button></div>`;
     return `<section class="section pgroup ${folded ? 'folded' : ''}" style="--pc:${p ? esc(p.color) : 'var(--ink-3)'}">
       <div class="group-head">
         <button class="group-toggle" data-action="toggle-group" data-group="${esc(id)}" aria-expanded="${!folded}">
@@ -293,9 +299,13 @@ function updateTasks() {
   $('#qa-input').placeholder = selected ? `Add a task to ${selected.name}…` : 'Add a task…';
 
   const tasks = visibleOpenTasks();
+  // Urgent & High sit in their own section above everything, in both layouts
+  const pinned = S().pinPriority ? tasks.filter((t) => t.priority <= 2) : [];
+  const rest = pinned.length ? tasks.filter((t) => t.priority > 2) : tasks;
+  pinned.sort((a, b) => a.priority - b.priority || dueRank(a, now) - dueRank(b, now) || (a.dueDate || '').localeCompare(b.dueDate || '') || sortByPrio(a, b));
   const tomorrow = addDaysKey(today, 1);
   const groups = { overdue: [], today: [], tomorrow: [], upcoming: [], anytime: [] };
-  for (const t of tasks) {
+  for (const t of rest) {
     if (isOverdue(t, now, S(), tz())) groups.overdue.push(t);
     else if (!t.dueDate) groups.anytime.push(t);
     else if (t.dueDate <= today) groups.today.push(t);
@@ -315,12 +325,12 @@ function updateTasks() {
     </section>` : '';
 
   const hideProject = ui.project !== 'all';
-  let html = ui.groupBy === 'project' ? projectGroupsHtml(tasks) :
+  let html = section('pinned', 'Urgent &amp; high', pinned, { hideProject }) + (ui.groupBy === 'project' ? projectGroupsHtml(rest, pinned) :
     section('overdue', 'Overdue', groups.overdue, { hideProject }) +
     section('today', 'Today', groups.today, { showDate: false, hideProject }) +
     section('tomorrow', 'Tomorrow', groups.tomorrow, { showDate: false, hideProject }) +
     section('upcoming', 'Upcoming', groups.upcoming, { hideProject }) +
-    section('anytime', 'Anytime', groups.anytime, { hideProject });
+    section('anytime', 'Anytime', groups.anytime, { hideProject }));
 
   if (!tasks.length && ui.project !== 'all') {
     html = `<div class="empty"><h3>No open tasks here</h3><p>Add one above${selected ? ' or pull in existing ones with “Add existing tasks”' : ''}.</p></div>`;
@@ -954,6 +964,12 @@ function notifySection(s) {
   return `
     <div class="set-group"><h3>Notifications</h3><div class="set-card"><div class="set-row">${status}</div></div></div>
     <div class="set-group"><h3>Per priority</h3><p class="hint">Tasks without a due date only show up in the daily summary.</p><div class="prio-cards">${prioCards}</div></div>
+    <div class="set-group"><h3>Deadline escalation</h3><p class="hint">Tasks turn Urgent automatically as their deadline gets close. Moving the deadline later puts the old priority back.</p><div class="set-card">
+      <div class="set-row"><div class="lbl"><b>Make tasks urgent near their deadline</b></div>${sw('escalate.enabled', s.escalate.enabled)}</div>
+      <div class="set-row"><div class="lbl"><b>When the deadline is</b></div>
+        <select data-set="escalate.days" data-kind="num">${[[0, 'Today'], [1, 'Tomorrow or sooner'], [2, 'Within 2 days'], [3, 'Within 3 days'], [7, 'Within a week']].map(([v, l]) => `<option value="${v}" ${s.escalate.days === v ? 'selected' : ''}>${l}</option>`).join('')}</select></div>
+      <div class="set-row"><div class="lbl"><b>Notify me when a task becomes urgent</b><small>Waits until quiet hours are over</small></div>${sw('escalate.notify', s.escalate.notify)}</div>
+    </div></div>
     <div class="set-group"><h3>Daily summary</h3><div class="set-card">
       <div class="set-row"><div class="lbl"><b>Morning summary</b><small>What's due today and overdue</small></div>${sw('digest.enabled', s.digest.enabled)}</div>
       <div class="set-row"><div class="lbl"><b>Time</b></div><input type="time" value="${s.digest.time}" data-set="digest.time" data-kind="str"></div>
@@ -1005,6 +1021,7 @@ function updateSettingsView() {
     ${listsSection(s)}
     <div class="set-group"><h3>Look &amp; feel</h3><div class="set-card">
       <div class="set-row"><div class="lbl"><b>Theme</b></div><select data-set="theme" data-kind="str">${[['auto', 'Match system'], ['light', 'Light'], ['dark', 'Dark']].map(([v, l]) => `<option value="${v}" ${s.theme === v ? 'selected' : ''}>${l}</option>`).join('')}</select></div>
+      <div class="set-row"><div class="lbl"><b>Keep urgent &amp; high on top</b><small>Pinned above everything, whether sorted by date or by project</small></div>${sw('pinPriority', s.pinPriority)}</div>
       <div class="set-row"><div class="lbl"><b>Confetti</b><small>When you reach a new level or clear the day</small></div>${sw('confetti', s.confetti)}</div>
       <div class="set-row"><div class="lbl"><b>Sounds</b><small>A soft chime when you tick something off</small></div>${sw('sound', s.sound)}</div>
     </div></div>
@@ -1313,7 +1330,28 @@ function reminderTick() {
 
 // ---------- boot ----------
 
+// Tasks whose deadline is close become Urgent; if the deadline moves away again
+// (or escalation is switched off) they get their old priority back.
+function runEscalation() {
+  const esc = S().escalate;
+  const today = todayKey();
+  for (const t of store.allTasks()) {
+    if (t.completedAt || !t.dueDate) continue;
+    const daysLeft = diffDaysKey(t.dueDate, today);
+    const near = esc.enabled && daysLeft <= esc.days;
+    // only upcoming deadlines escalate; tasks that were already overdue keep their priority
+    if (near && daysLeft >= 0 && !t.escalated && t.priority > 1) {
+      store.updateTask(t.id, { priority: 1, escalated: true, escalatedFrom: t.priority });
+    } else if (!near && t.escalated) {
+      store.updateTask(t.id, { escalated: false, escalatedFrom: null, ...(t.priority === 1 ? { priority: t.escalatedFrom || 3 } : {}) });
+    }
+  }
+}
+let escTimer = null;
+const queueEscalation = () => { clearTimeout(escTimer); escTimer = setTimeout(runEscalation, 1500); };
+
 store.subscribe(render);
+store.subscribe(queueEscalation);
 ui.route = currentRoute();
 ui.list = S().autoFocus && S().lists.some((l) => l.active !== 'always') ? 'now' : 'all';
 render();
@@ -1331,4 +1369,5 @@ if ('serviceWorker' in navigator) {
 setInterval(reminderTick, 30000);
 setTimeout(reminderTick, 3000);
 // refresh relative labels ("Today", overdue) every minute and at midnight
-setInterval(() => { if (!document.hidden) render(); }, 60000);
+setInterval(() => { if (!document.hidden) render(); runEscalation(); }, 60000);
+queueEscalation();

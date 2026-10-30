@@ -101,7 +101,7 @@ export function completeTask(id) {
   const next = nextOccurrence(t, dayKey(new Date(), tz()));
   if (next) {
     const n = createTask({
-      title: t.title, notes: t.notes, priority: t.priority, list: t.list,
+      title: t.title, notes: t.notes, priority: t.escalated ? (t.escalatedFrom || t.priority) : t.priority, list: t.list, project: t.project || null,
       dueDate: next, dueTime: t.dueTime, recurrence: t.recurrence,
       subtasks: (t.subtasks || []).map((s) => ({ ...s, done: false })),
     });
