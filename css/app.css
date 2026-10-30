@@ -113,16 +113,16 @@ h1, h2, h3 { margin: 0; letter-spacing: -0.01em; }
   background-size: 100%;
 }
 .side-nav, .side-lists { display: flex; flex-direction: column; gap: 2px; }
-.side-nav a, .side-lists button {
+.side-nav a, .side-lists button, .side-lists a {
   display: flex; align-items: center; gap: 11px; padding: 9px 10px; border-radius: 10px;
   color: var(--ink-2); text-decoration: none; font-weight: 550; text-align: left; width: 100%;
 }
-.side-nav a:hover, .side-lists button:hover { background: var(--surface-2); color: var(--ink); }
+.side-nav a:hover, .side-lists button:hover, .side-lists a:hover { background: var(--surface-2); color: var(--ink); }
 .side-nav a.active { background: var(--surface); color: var(--ink); box-shadow: var(--shadow-1); }
 .side-nav svg { width: 19px; height: 19px; }
 .side-lists h4 { margin: 0 10px 6px; font-size: 11.5px; text-transform: uppercase; letter-spacing: .06em; color: var(--ink-3); font-weight: 650; }
 .side-lists .count { margin-left: auto; font-size: 12.5px; color: var(--ink-3); font-variant-numeric: tabular-nums; }
-.side-lists button.active { background: var(--surface); color: var(--ink); box-shadow: var(--shadow-1); }
+.side-lists button.active, .side-lists a.active { background: var(--surface); color: var(--ink); box-shadow: var(--shadow-1); }
 .side-foot { margin-top: auto; padding: 0 8px; }
 
 .tabbar {
@@ -501,6 +501,39 @@ details.table-view th:first-child, details.table-view td:first-child { text-alig
 .auth-form .row > * { flex: 1; }
 .status-ok { color: var(--ok); font-weight: 600; }
 .status-bad { color: var(--danger); font-weight: 600; }
+
+/* ---------- projects ---------- */
+.side-lists h4.side-sub { margin-top: 16px; }
+.side-lists a .pdot { margin: 0 3px; }
+.pdot { display: inline-block; width: 9px; height: 9px; border-radius: 3px; flex: none; background: var(--pc, currentColor); }
+.pdot.big { width: 14px; height: 14px; border-radius: 4px; }
+.task-meta .proj-tag .pdot { width: 7px; height: 7px; border-radius: 2px; }
+.page-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin: 6px 0 16px; }
+.page-head h2 { font-size: 24px; font-weight: 750; letter-spacing: -0.02em; }
+.proj-grid { display: grid; gap: 10px; grid-template-columns: 1fr; }
+@media (min-width: 640px) { .proj-grid { grid-template-columns: 1fr 1fr; } }
+.proj-card {
+  display: block; padding: 14px 16px; color: inherit; text-decoration: none; border-left: 4px solid var(--pc);
+  transition: box-shadow .2s, transform .12s;
+}
+.proj-card:hover { box-shadow: var(--shadow-2); }
+.proj-card:active { transform: scale(.985); }
+.proj-card.is-done { opacity: .6; }
+.proj-top { display: flex; align-items: center; gap: 9px; }
+.proj-top h3 { flex: 1; min-width: 0; font-size: 16px; font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.proj-list { font-size: 12px; font-weight: 600; color: var(--ink-3); flex: none; }
+.proj-bar { height: 6px; border-radius: 3px; background: var(--surface-2); margin: 12px 0 8px; overflow: hidden; }
+.proj-bar i { display: block; height: 100%; border-radius: 3px; background: var(--pc); transition: width .6s cubic-bezier(.2, .8, .2, 1); }
+.proj-bar.big { height: 8px; margin: 12px 0 18px; background: var(--surface-3); }
+.proj-meta { display: flex; justify-content: space-between; gap: 8px; font-size: 12.5px; color: var(--ink-3); }
+.proj-meta b { color: var(--ink-2); font-variant-numeric: tabular-nums; }
+.proj-meta .late { color: var(--danger); font-weight: 600; }
+.back-link { display: inline-flex; align-items: center; gap: 2px; margin: 4px 0 8px -4px; color: var(--ink-3); font-size: 14px; font-weight: 600; text-decoration: none; }
+.back-link svg { width: 18px; height: 18px; }
+.proj-title { display: flex; align-items: center; gap: 10px; }
+.proj-title h2 { flex: 1; min-width: 0; font-size: 26px; font-weight: 750; letter-spacing: -0.025em; overflow-wrap: anywhere; }
+.proj-sub { margin-top: 2px; color: var(--ink-3); font-weight: 500; }
+.empty .art svg { color: var(--ink-3); }
 
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation-duration: .01ms !important; transition-duration: .01ms !important; }

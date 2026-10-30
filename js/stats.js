@@ -236,6 +236,9 @@ export function renderStats(tasks, settings, tz, range) {
   const listRows = settings.lists.map((l) => ({ label: `${esc(l.icon || '')} ${esc(l.name)}`, v: inRange.filter((t) => t.list === l.id).length, color: l.color }));
   const noList = inRange.filter((t) => !settings.lists.some((l) => l.id === t.list)).length;
   if (noList) listRows.push({ label: 'Other', v: noList, color: 'var(--ink-3)' });
+  const projRows = (settings.projects || [])
+    .map((p) => ({ label: esc(p.name), v: inRange.filter((t) => t.project === p.id).length, color: esc(p.color) }))
+    .filter((r) => r.v).sort((a, b) => b.v - a.v).slice(0, 8);
 
   return `
     ${tiles}
@@ -250,6 +253,7 @@ export function renderStats(tasks, settings, tz, range) {
       <div class="chart-card card"><h3>By priority</h3><div class="sub">${rangeLabel}</div>${hbars(prioRows)}</div>
       <div class="chart-card card"><h3>By list</h3><div class="sub">${rangeLabel}</div>${hbars(listRows)}</div>
     </div>
+    ${projRows.length ? `<div class="chart-card card"><h3>By project</h3><div class="sub">${rangeLabel}</div>${hbars(projRows)}</div>` : ''}
     <div class="chart-card card">
       <h3>Your best day: ${wdAvg[bestWd] > 0 ? ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'][bestWd] : '–'}</h3>
       <div class="sub">Average tasks completed per weekday, ${rangeLabel}</div>
