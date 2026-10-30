@@ -1,5 +1,5 @@
 // Service worker: offline support + push notifications.
-const CACHE = 'ticked-v8'; // keep in step with APP_VERSION in js/app.js
+const CACHE = 'ticked-v9'; // keep in step with APP_VERSION in js/app.js
 const SHELL = [
   './', 'index.html', 'css/app.css', 'config.js', 'manifest.webmanifest',
   'js/app.js', 'js/store.js', 'js/core.js', 'js/celebrate.js', 'js/stats.js',

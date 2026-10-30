@@ -65,9 +65,19 @@ const prioName = (p) => S().priorities[p]?.name || '';
 
 // ---------- UI state ----------
 
+// per-device view preferences (grouping, folded project groups)
+const prefs = (() => { try { return JSON.parse(localStorage.getItem('ticked.view') || '{}'); } catch { return {}; } })();
+const savePrefs = () => {
+  try { localStorage.setItem('ticked.view', JSON.stringify({ groupBy: ui.groupBy, collapsed: [...ui.collapsed] })); } catch {}
+};
+
 const ui = {
   route: 'tasks',
   list: null, // 'all' | 'now' | list id
+  project: 'all', // 'all' | 'none' | project id
+  groupBy: prefs.groupBy === 'project' ? 'project' : 'date',
+  collapsed: new Set(prefs.collapsed || []), // folded project groups
+  showDoneProjects: false,
   showDone: false,
   calMonth: null, // {y, m}
   calSel: null,
@@ -79,12 +89,11 @@ const ui = {
 };
 
 const hasPush = () => ui.pushSub && !!store.getUser();
-const APP_VERSION = 8; // keep in step with CACHE in sw.js
+const APP_VERSION = 9; // keep in step with CACHE in sw.js
 
 function currentRoute() {
   const r = location.hash.replace('#', '');
-  if (r.startsWith('project/')) { ui.projectId = decodeURIComponent(r.slice(8)); return 'project'; }
-  return ['tasks', 'projects', 'calendar', 'stats', 'settings'].includes(r) ? r : 'tasks';
+  return ['tasks', 'calendar', 'stats', 'settings'].includes(r) ? r : 'tasks';
 }
 
 const projects = () => S().projects || [];
@@ -93,11 +102,11 @@ const projectById = (id) => (id ? projects().find((p) => p.id === id) : null);
 // ---------- shell ----------
 
 const NAV = [
-  ['tasks', 'Tasks', I.tasks], ['projects', 'Projects', I.projects], ['calendar', 'Calendar', I.calendar], ['stats', 'Stats', I.stats], ['settings', 'Settings', I.settings],
+  ['tasks', 'Tasks', I.tasks], ['calendar', 'Calendar', I.calendar], ['stats', 'Stats', I.stats], ['settings', 'Settings', I.settings],
 ];
 
 function renderShell() {
-  const nav = NAV.map(([id, label, icon]) => `<a href="#${id}" class="${ui.route === id || (id === 'projects' && ui.route === 'project') ? 'active' : ''}">${icon}<span>${label}</span></a>`).join('');
+  const nav = NAV.map(([id, label, icon]) => `<a href="#${id}" class="${ui.route === id ? 'active' : ''}">${icon}<span>${label}</span></a>`).join('');
   $('#side-nav').innerHTML = nav;
   $('#tabbar').innerHTML = nav;
 
@@ -110,13 +119,13 @@ function renderShell() {
   $('#side-lists').innerHTML = `<h4>Lists</h4><button data-action="pick-list" data-list="all" class="${ui.route === 'tasks' && ui.list === 'all' ? 'active' : ''}"><span>📋</span>All tasks<span class="count">${open.length || ''}</span></button>${lists}` +
     `<h4 class="side-sub">Projects</h4>` + projects().filter((p) => !p.done).map((p) => {
       const n = open.filter((t) => t.project === p.id).length;
-      const active = ui.route === 'project' && ui.projectId === p.id;
-      return `<a href="#project/${encodeURIComponent(p.id)}" class="${active ? 'active' : ''}"><i class="pdot" style="background:${esc(p.color)}"></i>${esc(p.name)}<span class="count">${n || ''}</span></a>`;
+      const active = ui.route === 'tasks' && ui.project === p.id;
+      return `<button data-action="pick-project" data-project="${esc(p.id)}" class="${active ? 'active' : ''}"><i class="pdot" style="background:${esc(p.color)}"></i>${esc(p.name)}<span class="count">${n || ''}</span></button>`;
     }).join('') + `<button data-action="new-project"><span class="muted">＋</span>New project</button>`;
 
-  const titles = { tasks: 'Tasks', projects: 'Projects', project: projectById(ui.projectId)?.name || 'Project', calendar: 'History', stats: 'Statistics', settings: 'Settings' };
+  const titles = { tasks: 'Tasks', calendar: 'History', stats: 'Statistics', settings: 'Settings' };
   $('#topbar').innerHTML = `<h1>${esc(titles[ui.route])}</h1>${syncPill()}`;
-  $('#fab').style.display = ['tasks', 'projects', 'project', 'calendar'].includes(ui.route) ? '' : 'none';
+  $('#fab').style.display = ui.route === 'tasks' || ui.route === 'calendar' ? '' : 'none';
 }
 
 function syncPill() {
@@ -146,17 +155,19 @@ function tasksShell() {
     <section class="hero"><div><h2 id="greet"></h2><p id="hero-date"></p></div></section>
     ${quickAddForm('Add a task…')}
     <div class="chips" id="list-chips"></div>
+    <div class="chips" id="project-chips"></div>
+    <div id="project-head"></div>
     <div id="task-sections"></div>`;
 }
 
-function taskRow(t, { showDate = true } = {}) {
+function taskRow(t, { showDate = true, hideProject = false } = {}) {
   const list = listById(t.list);
   const due = showDate ? dueLabel(t) : (t.dueTime ? { txt: fmtTime(t.dueTime), cls: isOverdue(t, new Date(), S(), tz()) ? 'late' : '' } : null);
   const subs = t.subtasks || [];
   const proj = projectById(t.project);
   const meta = [
     due && `<span class="${due.cls}">${I.clock}${esc(due.txt)}</span>`,
-    proj && !(ui.route === 'project' && ui.projectId === proj.id) && `<span class="proj-tag"><i class="pdot" style="background:${esc(proj.color)}"></i>${esc(proj.name)}</span>`,
+    proj && !hideProject && `<span class="proj-tag"><i class="pdot" style="background:${esc(proj.color)}"></i>${esc(proj.name)}</span>`,
     list && ui.list !== list.id && `<span><i class="ldot" style="background:${esc(list.color)}"></i>${esc(list.name)}</span>`,
     t.recurrence && `<span>${I.repeat}${esc(describeRecurrence(t.recurrence))}</span>`,
     subs.length && `<span>${I.sub}${subs.filter((s) => s.done).length}/${subs.length}</span>`,
@@ -177,15 +188,83 @@ function sortByPrio(a, b) {
   return (a.priority - b.priority) || (a.dueTime || '99').localeCompare(b.dueTime || '99') || a.createdAt.localeCompare(b.createdAt);
 }
 
+/** Does a task pass the current list and project filters? */
+function matchesFilters(t, now = new Date()) {
+  if (ui.list === 'now') {
+    const l = listById(t.list);
+    if (l && !listIsActive(l, S(), now, tz())) return false;
+  } else if (ui.list !== 'all' && t.list !== ui.list) return false;
+  if (ui.project === 'none') return !projectById(t.project);
+  if (ui.project !== 'all') return t.project === ui.project;
+  return true;
+}
+
 function visibleOpenTasks() {
   const now = new Date();
-  let tasks = store.allTasks().filter((t) => !t.completedAt);
-  if (ui.list === 'now') {
-    tasks = tasks.filter((t) => { const l = listById(t.list); return !l || listIsActive(l, S(), now, tz()); });
-  } else if (ui.list !== 'all') {
-    tasks = tasks.filter((t) => t.list === ui.list);
-  }
-  return tasks;
+  return store.allTasks().filter((t) => !t.completedAt && matchesFilters(t, now));
+}
+
+function projectChips() {
+  const shown = projects().filter((p) => !p.done || p.id === ui.project || ui.showDoneProjects);
+  const finished = projects().filter((p) => p.done).length;
+  return [
+    `<div class="seg seg-sm" role="group" aria-label="Group tasks">
+      <button class="${ui.groupBy === 'date' ? 'active' : ''}" data-action="group-by" data-v="date" aria-pressed="${ui.groupBy === 'date'}">By date</button>
+      <button class="${ui.groupBy === 'project' ? 'active' : ''}" data-action="group-by" data-v="project" aria-pressed="${ui.groupBy === 'project'}">By project</button></div>`,
+    projects().length ? `<button class="chip ${ui.project === 'all' ? 'active' : ''}" data-action="pick-project" data-project="all">All projects</button>` : '',
+    ...shown.map((p) => `<button class="chip ${ui.project === p.id ? 'active' : ''} ${p.done ? 'is-done' : ''}" data-action="pick-project" data-project="${esc(p.id)}"><i class="pdot" style="background:${esc(p.color)}"></i>${esc(p.name)}</button>`),
+    projects().length ? `<button class="chip ${ui.project === 'none' ? 'active' : ''}" data-action="pick-project" data-project="none">No project</button>` : '',
+    finished ? `<button class="chip ghost" data-action="toggle-done-projects">${ui.showDoneProjects ? 'Hide completed' : `Completed (${finished})`}</button>` : '',
+    `<button class="chip ghost" data-action="new-project">＋ Project</button>`,
+  ].join('');
+}
+
+/** Header card shown when one project is selected: progress and actions. */
+function projectHead(p) {
+  const s = projectStats(p);
+  const list = listById(p.list);
+  return `<div class="proj-head card" style="--pc:${esc(p.color)}">
+    <div class="proj-title"><i class="pdot big"></i><h2>${esc(p.name)}</h2>
+      <button class="icon-btn" data-action="edit-project" data-project="${esc(p.id)}" aria-label="Edit project">${I.edit}</button></div>
+    <div class="proj-sub">${list ? `${esc(list.icon)} ${esc(list.name)} · ` : ''}${s.done} of ${s.total} done${p.done ? ' · completed' : ''}</div>
+    <div class="proj-bar big"><i style="width:${pct(s)}%"></i></div>
+    <div class="row">
+      <button class="btn small" data-action="assign-existing" data-project="${esc(p.id)}">${I.plus.replace('<svg', '<svg width="15" height="15"')} Add existing tasks</button>
+      ${!p.done && s.total && !s.open ? `<button class="btn small" data-action="complete-project" data-project="${esc(p.id)}">Mark project complete</button>` : ''}
+    </div>
+  </div>`;
+}
+
+/** "By project" layout: one foldable group per project, then tasks without one. */
+function projectGroupsHtml(tasks) {
+  const now = new Date();
+  const rank = (t) => (isOverdue(t, now, S(), tz()) ? 0 : t.dueDate ? 1 : 2);
+  const order = (a, b) => rank(a) - rank(b) || (a.dueDate || '').localeCompare(b.dueDate || '') || sortByPrio(a, b);
+  const showEmpty = ui.list === 'all' && ui.project === 'all';
+  const groups = projects()
+    .filter((p) => (ui.project === 'all' || ui.project === p.id) && (!p.done || ui.project === p.id))
+    .map((p) => ({ id: p.id, p, items: tasks.filter((t) => t.project === p.id) }))
+    .filter((g) => g.items.length || showEmpty || ui.project === g.id);
+  const loose = tasks.filter((t) => !projectById(t.project));
+  if (loose.length) groups.push({ id: 'none', p: null, items: loose });
+
+  return groups.map(({ id, p, items }) => {
+    const folded = ui.collapsed.has(id);
+    const s = p && projectStats(p);
+    const body = folded ? '' : items.length
+      ? `<div class="task-list">${items.sort(order).map((t) => taskRow(t, { hideProject: true })).join('')}</div>`
+      : `<div class="group-empty">No open tasks · <button data-action="assign-existing" data-project="${esc(id)}">Add existing</button></div>`;
+    return `<section class="section pgroup ${folded ? 'folded' : ''}" style="--pc:${p ? esc(p.color) : 'var(--ink-3)'}">
+      <div class="group-head">
+        <button class="group-toggle" data-action="toggle-group" data-group="${esc(id)}" aria-expanded="${!folded}">
+          <span class="chev">${I.right}</span><i class="pdot"></i><h3>${p ? esc(p.name) : 'No project'}</h3><span class="n">${items.length}</span>
+        </button>
+        ${p ? `<span class="group-prog" title="${s.done} of ${s.total} done"><i style="width:${pct(s)}%"></i></span>
+          <button class="icon-btn small" data-action="pick-project" data-project="${esc(id)}" aria-label="Open ${esc(p.name)}">${I.right}</button>` : ''}
+      </div>
+      ${body}
+    </section>`;
+  }).join('');
 }
 
 function updateTasks() {
@@ -206,6 +285,12 @@ function updateTasks() {
     ...S().lists.map((l) => `<button class="chip ${ui.list === l.id ? 'active' : ''}" data-action="pick-list" data-list="${esc(l.id)}"><i class="dot" style="background:${esc(l.color)}"></i>${esc(l.name)}</button>`),
   ];
   $('#list-chips').innerHTML = chips.join('');
+
+  if (ui.project !== 'all' && ui.project !== 'none' && !projectById(ui.project)) ui.project = 'all'; // deleted elsewhere
+  $('#project-chips').innerHTML = projectChips();
+  const selected = projectById(ui.project);
+  $('#project-head').innerHTML = selected ? projectHead(selected) : '';
+  $('#qa-input').placeholder = selected ? `Add a task to ${selected.name}…` : 'Add a task…';
 
   const tasks = visibleOpenTasks();
   const tomorrow = addDaysKey(today, 1);
@@ -229,19 +314,23 @@ function updateTasks() {
       <div class="task-list">${items.map((t) => taskRow(t, opts)).join('')}</div>
     </section>` : '';
 
-  let html = section('overdue', 'Overdue', groups.overdue) +
-    section('today', 'Today', groups.today, { showDate: false }) +
-    section('tomorrow', 'Tomorrow', groups.tomorrow, { showDate: false }) +
-    section('upcoming', 'Upcoming', groups.upcoming) +
-    section('anytime', 'Anytime', groups.anytime);
+  const hideProject = ui.project !== 'all';
+  let html = ui.groupBy === 'project' ? projectGroupsHtml(tasks) :
+    section('overdue', 'Overdue', groups.overdue, { hideProject }) +
+    section('today', 'Today', groups.today, { showDate: false, hideProject }) +
+    section('tomorrow', 'Tomorrow', groups.tomorrow, { showDate: false, hideProject }) +
+    section('upcoming', 'Upcoming', groups.upcoming, { hideProject }) +
+    section('anytime', 'Anytime', groups.anytime, { hideProject });
 
-  if (!tasks.length) {
+  if (!tasks.length && ui.project !== 'all') {
+    html = `<div class="empty"><h3>No open tasks here</h3><p>Add one above${selected ? ' or pull in existing ones with “Add existing tasks”' : ''}.</p></div>`;
+  } else if (!html.trim()) {
     html = doneToday.length
       ? `<div class="empty"><div class="art">🌿</div><h3>All clear</h3><p>You finished ${doneToday.length} task${doneToday.length > 1 ? 's' : ''} today. Nice work.</p></div>`
       : `<div class="empty"><div class="art">✨</div><h3>Nothing here yet</h3><p>Add your first task above. Try “Send report fri 3pm !1 #work”.</p></div>`;
   }
 
-  const doneHere = doneToday.filter((t) => ui.list === 'all' || ui.list === 'now' || t.list === ui.list)
+  const doneHere = doneToday.filter((t) => matchesFilters(t))
     .sort((a, b) => b.completedAt.localeCompare(a.completedAt));
   if (doneHere.length) {
     html += `<section class="section donetoday">
@@ -458,7 +547,7 @@ function openEditor(id, preset = {}) {
       <div class="chips" style="flex-wrap:wrap">${S().lists.map((l) => `<button type="button" class="chip ${d.list === l.id ? 'active' : ''}" data-l="${esc(l.id)}"><i class="dot" style="background:${esc(l.color)}"></i>${esc(l.name)}</button>`).join('')}</div>
     </div>
     ${projects().length ? `<div class="field"><span class="field-label">Project</span>
-      <select id="ed-project" aria-label="Project"><option value="">No project</option>${projects().filter((p) => !p.done || p.id === d.project).map((p) => `<option value="${esc(p.id)}" ${d.project === p.id ? 'selected' : ''}>${esc(p.name)}</option>`).join('')}</select>
+      <div class="chips" style="flex-wrap:wrap"><button type="button" class="chip ${!d.project ? 'active' : ''}" data-pj="">None</button>${projects().filter((p) => !p.done || p.id === d.project).map((p) => `<button type="button" class="chip ${d.project === p.id ? 'active' : ''}" data-pj="${esc(p.id)}"><i class="pdot" style="background:${esc(p.color)}"></i>${esc(p.name)}</button>`).join('')}</div>
     </div>` : ''}
     <div class="field"><span class="field-label">Due</span>
       <div class="row">
@@ -519,6 +608,13 @@ function openEditor(id, preset = {}) {
       if (!b) return;
       if (b.dataset.p) { d.priority = +b.dataset.p; rerender(); }
       else if (b.dataset.l) { d.list = b.dataset.l; rerender(); }
+      else if ('pj' in b.dataset) {
+        capture(sheet);
+        d.project = b.dataset.pj || null;
+        const p = projectById(d.project);
+        if (p?.list) d.list = p.list;
+        rerender();
+      }
       else if ('date' in b.dataset) { capture(sheet); d.dueDate = b.dataset.date || null; if (!d.dueDate) d.dueTime = null; sheet.querySelector('#ed-date').value = d.dueDate || ''; rerender(); }
       else if (b.dataset.sx) { capture(sheet); d.subtasks.splice(+b.dataset.sx, 1); rerender(); }
       else if (b.id === 'ed-cancel') closeSheet();
@@ -533,13 +629,6 @@ function openEditor(id, preset = {}) {
     });
     sheet.addEventListener('change', (e) => {
       if (e.target.id === 'ed-date') { rerender(); }
-      else if (e.target.id === 'ed-project') {
-        capture(sheet);
-        d.project = e.target.value || null;
-        const p = projectById(d.project);
-        if (p?.list) d.list = p.list;
-        rerender();
-      }
       else if (e.target.id === 'ed-freq') {
         capture(sheet);
         const f = e.target.value;
@@ -591,84 +680,56 @@ function projectStats(p) {
 
 const pct = (s) => (s.total ? Math.round((s.done / s.total) * 100) : 0);
 
-function projectsShell() {
-  return `<div class="page-head"><h2>Projects</h2><button class="btn primary small" data-action="new-project">${I.plus.replace('<svg', '<svg width="16" height="16"')} New project</button></div><div id="proj-body"></div>`;
-}
-
-function projectCard(p) {
-  const s = projectStats(p);
-  const list = listById(p.list);
-  const meta = [
-    s.open ? `${s.open} open` : s.total ? 'All done' : 'No tasks yet',
-    s.overdue && `<span class="late">${s.overdue} overdue</span>`,
-    s.next && `next: ${esc(dueLabel(s.next).txt)}`,
-  ].filter(Boolean).join(' · ');
-  return `<a class="proj-card card ${p.done ? 'is-done' : ''}" href="#project/${encodeURIComponent(p.id)}" style="--pc:${esc(p.color)}">
-    <div class="proj-top"><i class="pdot"></i><h3>${esc(p.name)}</h3>${list ? `<span class="proj-list">${esc(list.name)}</span>` : ''}</div>
-    <div class="proj-bar" role="progressbar" aria-label="Progress" aria-valuenow="${pct(s)}" aria-valuemin="0" aria-valuemax="100"><i style="width:${pct(s)}%"></i></div>
-    <div class="proj-meta"><span>${meta}</span><b>${s.done}/${s.total}</b></div>
-  </a>`;
-}
-
-function updateProjects() {
-  const active = projects().filter((p) => !p.done);
-  const finished = projects().filter((p) => p.done);
-  let html = active.length
-    ? `<div class="proj-grid">${active.map(projectCard).join('')}</div>`
-    : `<div class="empty"><div class="art">${I.projects.replace('<svg', '<svg width="44" height="44"')}</div><h3>No projects yet</h3>
-        <p>Group related tasks, like “Thesis chapter 2” or “Move flat”, and watch each one fill up.</p>
-        <button class="btn primary" data-action="new-project" style="margin-top:8px">Create a project</button></div>`;
-  if (finished.length) {
-    html += `<section class="section"><div class="section-head"><h3>Completed projects</h3><span class="n">${finished.length}</span>
-      <button data-action="toggle-done-projects">${ui.showDoneProjects ? 'Hide' : 'Show'}</button></div>
-      ${ui.showDoneProjects ? `<div class="proj-grid">${finished.map(projectCard).join('')}</div>` : ''}</section>`;
-  }
-  $('#proj-body').innerHTML = html;
-}
-
-function projectShell() {
-  return `<div id="proj-head"></div>${quickAddForm('Add a task to this project…')}<div id="task-sections"></div>`;
-}
-
-function updateProject() {
-  const p = projectById(ui.projectId);
-  if (!p) {
-    $('#proj-head').innerHTML = `<a class="back-link" href="#projects">${I.left}Projects</a><div class="empty"><h3>Project not found</h3><p>It may have been deleted on another device.</p></div>`;
-    $('#quickadd').hidden = true;
-    $('#task-sections').innerHTML = '';
-    return;
-  }
-  const s = projectStats(p);
-  const list = listById(p.list);
-  $('#proj-head').innerHTML = `<a class="back-link" href="#projects">${I.left}Projects</a>
-    <div class="proj-title" style="--pc:${esc(p.color)}"><i class="pdot big"></i><h2>${esc(p.name)}</h2>
-      <button class="icon-btn" data-action="edit-project" aria-label="Edit project">${I.edit}</button></div>
-    <div class="proj-sub">${list ? `${esc(list.icon)} ${esc(list.name)} · ` : ''}${s.done} of ${s.total} done${p.done ? ' · completed' : ''}</div>
-    <div class="proj-bar big" style="--pc:${esc(p.color)}"><i style="width:${pct(s)}%"></i></div>`;
-
-  const now = new Date();
-  const tasks = store.allTasks().filter((t) => t.project === p.id);
-  const open = tasks.filter((t) => !t.completedAt);
-  const overdue = open.filter((t) => isOverdue(t, now, S(), tz())).sort((a, b) => a.dueDate.localeCompare(b.dueDate) || sortByPrio(a, b));
-  const scheduled = open.filter((t) => t.dueDate && !overdue.includes(t)).sort((a, b) => a.dueDate.localeCompare(b.dueDate) || sortByPrio(a, b));
-  const anytime = open.filter((t) => !t.dueDate).sort(sortByPrio);
-  const done = tasks.filter((t) => t.completedAt).sort((a, b) => b.completedAt.localeCompare(a.completedAt));
-
-  const section = (key, title, items) => items.length ? `
-    <section class="section ${key}"><div class="section-head"><h3>${title}</h3><span class="n">${items.length}</span></div>
-      <div class="task-list">${items.map((t) => taskRow(t)).join('')}</div></section>` : '';
-  let html = section('overdue', 'Overdue', overdue) + section('upcoming', 'Scheduled', scheduled) + section('anytime', 'Anytime', anytime);
-  if (!open.length) {
-    html = done.length
-      ? `<div class="empty"><h3>Everything here is done</h3><p>Finished with this project? Mark it complete with the edit button above.</p></div>`
-      : `<div class="empty"><h3>No tasks yet</h3><p>Add the first one above.</p></div>`;
-  }
-  if (done.length) {
-    html += `<section class="section"><div class="section-head"><h3>Done</h3><span class="n">${done.length}</span>
-      <button data-action="toggle-proj-done">${ui.showProjDone ? 'Hide' : 'Show'}</button></div>
-      ${ui.showProjDone ? `<div class="task-list">${done.map((t) => taskRow(t)).join('')}</div>` : ''}</section>`;
-  }
-  $('#task-sections').innerHTML = html;
+/** Checklist of open tasks to pull into a project. */
+function openAssignPicker(pid) {
+  const p = projectById(pid);
+  if (!p) return;
+  const candidates = store.allTasks().filter((t) => !t.completedAt && t.project !== pid)
+    .sort((a, b) => (a.dueDate || '9').localeCompare(b.dueDate || '9') || sortByPrio(a, b));
+  const chosen = new Set();
+  let q = '';
+  const rows = () => {
+    const found = candidates.filter((t) => t.title.toLowerCase().includes(q));
+    if (!found.length) return `<p class="muted" style="padding:14px 4px">${candidates.length ? 'No matching tasks.' : 'All your open tasks are already in this project.'}</p>`;
+    return found.map((t) => {
+      const cur = projectById(t.project), due = dueLabel(t), list = listById(t.list);
+      const meta = [due && esc(due.txt), cur && `in ${esc(cur.name)}`, list && esc(list.name)].filter(Boolean).join(' · ');
+      return `<label class="pick-row p${t.priority || 3}"><input type="checkbox" data-pick="${t.id}" ${chosen.has(t.id) ? 'checked' : ''}>
+        <span class="pick-main"><span class="pick-title">${esc(t.title)}</span>${meta ? `<span class="pick-meta">${meta}</span>` : ''}</span></label>`;
+    }).join('');
+  };
+  openSheet(`
+    <h3 class="sheet-title">Add tasks to <span style="color:${esc(p.color)}">${esc(p.name)}</span></h3>
+    <input type="search" id="pick-q" placeholder="Search your tasks" aria-label="Search tasks" style="width:100%;margin-top:12px">
+    <div class="pick-list" id="pick-list">${rows()}</div>
+    <div class="sheet-actions"><span class="spacer"></span>
+      <button type="button" class="btn" id="pick-cancel">Cancel</button>
+      <button type="button" class="btn primary" id="pick-save" disabled>Add tasks</button></div>`, (sheet) => {
+    const btn = $('#pick-save', sheet);
+    const sync = () => {
+      btn.disabled = !chosen.size;
+      btn.textContent = chosen.size ? `Add ${chosen.size} task${chosen.size > 1 ? 's' : ''}` : 'Add tasks';
+    };
+    sheet.addEventListener('input', (e) => {
+      if (e.target.id !== 'pick-q') return;
+      q = e.target.value.trim().toLowerCase();
+      $('#pick-list', sheet).innerHTML = rows();
+    });
+    sheet.addEventListener('change', (e) => {
+      const id = e.target.dataset.pick;
+      if (!id) return;
+      if (e.target.checked) chosen.add(id); else chosen.delete(id);
+      sync();
+    });
+    sheet.addEventListener('click', (e) => {
+      if (e.target.id === 'pick-cancel') closeSheet();
+      else if (e.target.id === 'pick-save') {
+        chosen.forEach((id) => store.updateTask(id, { project: pid }));
+        closeSheet();
+        toast(`Added ${chosen.size} task${chosen.size > 1 ? 's' : ''} to ${p.name}`);
+      }
+    });
+  });
 }
 
 function openProjectEditor(id) {
@@ -710,8 +771,9 @@ function openProjectEditor(id) {
       store.updateSettings((s) => {
         s.projects = [...(s.projects || []), { id: pid, name: d.name, color: d.color, list: d.list, done: false, createdAt: new Date().toISOString() }];
       });
+      ui.project = pid;
       closeSheet();
-      location.hash = `project/${encodeURIComponent(pid)}`;
+      if (ui.route !== 'tasks') location.hash = 'tasks';
     };
 
     sheet.addEventListener('click', (e) => {
@@ -734,8 +796,8 @@ function openProjectEditor(id) {
         if (!confirm(`Delete the project “${existing.name}”?${n ? ` Its ${n} task${n > 1 ? 's' : ''} stay in your lists, just without a project.` : ''}`)) return;
         store.allTasks().filter((t) => t.project === id).forEach((t) => store.updateTask(t.id, { project: null }));
         store.updateSettings((s) => { s.projects = s.projects.filter((x) => x.id !== id); });
+        if (ui.project === id) ui.project = 'all';
         closeSheet();
-        location.hash = 'projects';
       }
     });
     sheet.addEventListener('keydown', (e) => {
@@ -966,8 +1028,6 @@ function getPath(obj, path) { return path.split('.').reduce((o, k) => o[k], obj)
 
 const VIEWS = {
   tasks: [tasksShell, updateTasks],
-  projects: [projectsShell, updateProjects],
-  project: [projectShell, updateProject],
   calendar: [calendarShell, updateCalendar],
   stats: [statsShell, updateStats],
   settings: [settingsShell, updateSettingsView],
@@ -984,10 +1044,9 @@ function render() {
   applyTheme();
   renderShell();
   const [shell, update] = VIEWS[ui.route];
-  const key = ui.route === 'project' ? `project/${ui.projectId}` : ui.route;
-  if (shellRoute !== key) {
+  if (shellRoute !== ui.route) {
     $('#view').innerHTML = shell();
-    shellRoute = key;
+    shellRoute = ui.route;
     $('.main').scrollTo(0, 0);
   }
   update();
@@ -1032,9 +1091,30 @@ document.addEventListener('click', async (e) => {
     }
     case 'stats-range': ui.statsRange = +el.dataset.v; render(); break;
     case 'new-project': openProjectEditor(null); break;
-    case 'edit-project': openProjectEditor(ui.projectId); break;
+    case 'edit-project': openProjectEditor(el.dataset.project); break;
     case 'toggle-done-projects': ui.showDoneProjects = !ui.showDoneProjects; render(); break;
-    case 'toggle-proj-done': ui.showProjDone = !ui.showProjDone; render(); break;
+    case 'pick-project': {
+      const v = el.dataset.project;
+      ui.project = ui.project === v && v !== 'all' ? 'all' : v; // tap the active chip again to clear it
+      if (ui.route !== 'tasks') location.hash = 'tasks'; else render();
+      break;
+    }
+    case 'group-by': ui.groupBy = el.dataset.v; savePrefs(); render(); break;
+    case 'toggle-group': {
+      const g = el.dataset.group;
+      if (ui.collapsed.has(g)) ui.collapsed.delete(g); else ui.collapsed.add(g);
+      savePrefs();
+      render();
+      break;
+    }
+    case 'assign-existing': openAssignPicker(el.dataset.project); break;
+    case 'complete-project': {
+      const p = projectById(el.dataset.project);
+      store.updateSettings((s) => { s.projects.find((x) => x.id === p.id).done = true; });
+      if (S().confetti) confetti();
+      toast(`Project “${p.name}” completed`);
+      break;
+    }
     case 'toggle-arr': {
       const path = el.dataset.path, v = +el.dataset.v;
       store.updateSettings((s) => {
@@ -1121,7 +1201,7 @@ document.addEventListener('submit', async (e) => {
     const p = parseQuick(input.value);
     if (!p.title) return;
     // on a project page, new tasks belong to that project unless +another is typed
-    const proj = projectById(p.project) || (ui.route === 'project' ? projectById(ui.projectId) : null);
+    const proj = projectById(p.project) || projectById(ui.project);
     store.createTask({
       title: p.title, priority: p.priority || 3, list: p.list || proj?.list || defaultListForNew(),
       dueDate: p.dueDate || null, dueTime: p.dueTime || null, recurrence: p.recurrence || null, project: proj?.id || null,
@@ -1152,16 +1232,15 @@ document.addEventListener('input', (e) => {
 document.addEventListener('keydown', (e) => {
   if (e.key === 'Escape' && $('.sheet-backdrop')) { closeSheet(); return; }
   const typing = e.target.matches('input, textarea, select, [contenteditable]');
-  if (!typing && !e.ctrlKey && !e.metaKey && (e.key === 'n' || e.key === '/') && (ui.route === 'tasks' || ui.route === 'project')) {
+  if (!typing && !e.ctrlKey && !e.metaKey && (e.key === 'n' || e.key === '/') && ui.route === 'tasks') {
     e.preventDefault();
     $('#qa-input')?.focus();
   }
 });
 
 $('#fab').addEventListener('click', () => {
-  if (ui.route === 'projects') { openProjectEditor(null); return; }
   let preset = ui.route === 'calendar' && ui.calSel >= todayKey() ? { dueDate: ui.calSel } : {};
-  const proj = ui.route === 'project' && projectById(ui.projectId);
+  const proj = ui.route === 'tasks' && projectById(ui.project);
   if (proj) preset = { project: proj.id, ...(proj.list ? { list: proj.list } : {}) };
   openEditor(null, preset);
 });
@@ -1182,6 +1261,7 @@ document.addEventListener('pointermove', (e) => {
 });
 
 window.addEventListener('hashchange', () => { ui.route = currentRoute(); render(); });
+if (location.hash.startsWith('#project')) history.replaceState(null, '', '#tasks');
 
 // Pin the counter to the top once it would scroll out of view.
 function pinBadge() {
